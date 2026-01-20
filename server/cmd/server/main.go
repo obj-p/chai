@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -84,8 +85,9 @@ func main() {
 	// Create server
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
-		Addr:    addr,
-		Handler: r,
+		Addr:        addr,
+		Handler:     r,
+		IdleTimeout: 10 * time.Minute,
 	}
 
 	// Set up signal handling for graceful shutdown
