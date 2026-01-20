@@ -1,0 +1,20 @@
+name: Chai
+options:
+  bundleIdPrefix: com.objp.chai
+  deploymentTarget:
+    iOS: 26
+settings:
+  base:
+    GENERATE_INFOPLIST_FILE: true
+
+targets:
+  Chai:
+    type: application
+    platform: iOS
+    sources: [Chai]
+  ChaiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [ChaiTests]
+    dependencies:
+      - target: Chai
