@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // ClaudeRunner interface for dependency injection
@@ -96,7 +98,7 @@ func (h *Handlers) CreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "missing session id")
 		return
@@ -129,7 +131,7 @@ func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "missing session id")
 		return
@@ -153,7 +155,7 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "missing session id")
 		return
@@ -308,7 +310,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) Approve(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+	id := chi.URLParam(r, "id")
 	if id == "" {
 		writeError(w, http.StatusBadRequest, "missing session id")
 		return
