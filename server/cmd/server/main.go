@@ -22,6 +22,7 @@ func main() {
 	workDir := flag.String("workdir", "", "working directory for Claude CLI (defaults to current dir)")
 	claudeCmd := flag.String("claude-cmd", "claude", "path to Claude CLI command")
 	promptTimeout := flag.Duration("prompt-timeout", 5*time.Minute, "timeout for prompt requests")
+	shutdownTimeout := flag.Duration("shutdown-timeout", 30*time.Second, "timeout for graceful shutdown")
 	flag.Parse()
 
 	// Default working directory to current directory
@@ -86,7 +87,7 @@ func main() {
 		claude.Shutdown()
 
 		// Graceful HTTP shutdown with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), *shutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
 			log.Printf("HTTP server shutdown error: %v", err)

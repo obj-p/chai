@@ -286,12 +286,16 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 			data, _ := json.Marshal(toolCalls)
 			toolCallsJSON = data
 		}
-		h.repo.CreateMessage(id, "assistant", assistantContent.String(), toolCallsJSON)
+		if _, err := h.repo.CreateMessage(id, "assistant", assistantContent.String(), toolCallsJSON); err != nil {
+			log.Printf("Warning: failed to save assistant message for session %s: %v", id, err)
+		}
 	}
 
 	// Update Claude session ID if we got a new one
 	if claudeSessionID != "" && (session.ClaudeSessionID == nil || *session.ClaudeSessionID != claudeSessionID) {
-		h.repo.UpdateSessionClaudeID(id, claudeSessionID)
+		if err := h.repo.UpdateSessionClaudeID(id, claudeSessionID); err != nil {
+			log.Printf("Warning: failed to update Claude session ID for session %s: %v", id, err)
+		}
 	}
 
 	if err != nil {

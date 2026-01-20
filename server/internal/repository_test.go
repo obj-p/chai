@@ -154,7 +154,7 @@ func TestRepository_Messages(t *testing.T) {
 		t.Error("Message ID should not be empty")
 	}
 
-	msg2, _ := repo.CreateMessage(session.ID, "assistant", "Hi there!", nil)
+	_, _ = repo.CreateMessage(session.ID, "assistant", "Hi there!", nil)
 
 	// Get messages
 	messages, err := repo.GetSessionMessages(session.ID)
@@ -177,5 +177,4 @@ func TestRepository_Messages(t *testing.T) {
 	if len(messages) != 0 {
 		t.Errorf("Expected 0 messages after session delete, got %d", len(messages))
 	}
-	_ = msg2 // use variable
 }
