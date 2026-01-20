@@ -35,6 +35,17 @@ func NewClaudeManager(workingDir, claudeCmd string) *ClaudeManager {
 	}
 }
 
+// UserMessage is the JSON format for sending prompts via stdin
+type UserMessage struct {
+	Type    string         `json:"type"`
+	Message UserMessageMsg `json:"message"`
+}
+
+type UserMessageMsg struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 // RunPrompt executes a prompt and streams events through the callback
 // The callback receives JSON lines from Claude CLI stdout
 func (cm *ClaudeManager) RunPrompt(
@@ -45,16 +56,15 @@ func (cm *ClaudeManager) RunPrompt(
 	onEvent func(line []byte) error,
 ) (string, error) {
 	args := []string{
-		"--print",
+		"--verbose",
 		"--output-format", "stream-json",
+		"--input-format", "stream-json",
 		"--permission-prompt-tool", "stdio",
 	}
 
 	if claudeSessionID != nil && *claudeSessionID != "" {
 		args = append(args, "--resume", *claudeSessionID)
 	}
-
-	args = append(args, prompt)
 
 	cmd := exec.CommandContext(ctx, cm.claudeCmd, args...)
 	cmd.Dir = cm.workingDir
@@ -96,6 +106,23 @@ func (cm *ClaudeManager) RunPrompt(
 		stdin.Close()
 	}()
 
+	// Send the prompt via stdin as JSON
+	userMsg := UserMessage{
+		Type: "user",
+		Message: UserMessageMsg{
+			Role:    "user",
+			Content: prompt,
+		},
+	}
+	msgData, err := json.Marshal(userMsg)
+	if err != nil {
+		return "", fmt.Errorf("marshal prompt: %w", err)
+	}
+	msgData = append(msgData, '\n')
+	if _, err := stdin.Write(msgData); err != nil {
+		return "", fmt.Errorf("write prompt: %w", err)
+	}
+
 	// Read stderr in background for debugging
 	go func() {
 		scanner := bufio.NewScanner(stderr)
@@ -121,6 +148,10 @@ func (cm *ClaudeManager) RunPrompt(
 				if err := json.Unmarshal(line, &result); err == nil {
 					resultSessionID = result.SessionID
 				}
+				// Result received - send to callback, close stdin to signal done, and exit loop
+				onEvent(line)
+				stdin.Close()
+				break
 			}
 		}
 

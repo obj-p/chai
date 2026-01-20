@@ -47,6 +47,16 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
+	// Build the server binary first
+	buildCmd := exec.Command("go", "build", "-o", "/tmp/chai-test-server", "./cmd/server")
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+	if err := buildCmd.Run(); err != nil {
+		fmt.Printf("Failed to build server: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.Remove("/tmp/chai-test-server")
+
 	// Start the server
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -55,7 +65,7 @@ func TestMain(m *testing.M) {
 	tmpDB.Close()
 	defer os.Remove(tmpDB.Name())
 
-	cmd := exec.CommandContext(ctx, "go", "run", "./cmd/server",
+	cmd := exec.CommandContext(ctx, "/tmp/chai-test-server",
 		"-port", "18080",
 		"-db", tmpDB.Name(),
 		"-workdir", os.TempDir(),
