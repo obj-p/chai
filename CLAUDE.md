@@ -40,7 +40,7 @@ make run                # Build and run (port 8080)
 ### Server Structure (`server/`)
 
 ```
-cmd/server/main.go     - Entry point, routing (Go 1.22+ stdlib router)
+cmd/server/main.go     - Entry point, Chi routing with middleware
 internal/
   types.go             - Domain types, API DTOs, Claude CLI event types
   repository.go        - SQLite operations (sessions, messages)
@@ -50,7 +50,7 @@ internal/
 
 ### Key Design Decisions
 
-- **No external router**: Uses Go 1.22+ stdlib `http.ServeMux` with pattern matching
+- **Chi router**: Uses github.com/go-chi/chi/v5 for routing with built-in middleware (RequestID, Logger, Recoverer)
 - **SQLite**: Single-file database with foreign keys enabled
 - **SSE streaming**: `/api/sessions/{id}/prompt` streams Claude CLI JSON output to client
 - **stdin JSON protocol**: Claude CLI runs with `--input-format stream-json --permission-prompt-tool stdio`, prompts sent via stdin as `{"type":"user","message":{"role":"user","content":"..."}}`

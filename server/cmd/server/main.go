@@ -12,6 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+
 	"chai/server/internal"
 )
 
@@ -52,27 +55,37 @@ func main() {
 	// Initialize handlers
 	handlers := internal.NewHandlers(repo, claude, *promptTimeout)
 
-	// Set up routes using Go 1.22+ stdlib router
-	mux := http.NewServeMux()
+	// Set up Chi router with middleware
+	r := chi.NewRouter()
+
+	// Middleware stack
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	// Health check
-	mux.HandleFunc("GET /health", handlers.Health)
+	r.Get("/health", handlers.Health)
 
-	// Sessions
-	mux.HandleFunc("GET /api/sessions", handlers.ListSessions)
-	mux.HandleFunc("POST /api/sessions", handlers.CreateSession)
-	mux.HandleFunc("GET /api/sessions/{id}", handlers.GetSession)
-	mux.HandleFunc("DELETE /api/sessions/{id}", handlers.DeleteSession)
+	// API routes with grouping
+	r.Route("/api", func(r chi.Router) {
+		r.Route("/sessions", func(r chi.Router) {
+			r.Get("/", handlers.ListSessions)
+			r.Post("/", handlers.CreateSession)
 
-	// Session actions
-	mux.HandleFunc("POST /api/sessions/{id}/prompt", handlers.Prompt)
-	mux.HandleFunc("POST /api/sessions/{id}/approve", handlers.Approve)
+			r.Route("/{id}", func(r chi.Router) {
+				r.Get("/", handlers.GetSession)
+				r.Delete("/", handlers.DeleteSession)
+				r.Post("/prompt", handlers.Prompt)
+				r.Post("/approve", handlers.Approve)
+			})
+		})
+	})
 
 	// Create server
 	addr := fmt.Sprintf(":%d", *port)
 	server := &http.Server{
 		Addr:    addr,
-		Handler: mux,
+		Handler: r,
 	}
 
 	// Set up signal handling for graceful shutdown

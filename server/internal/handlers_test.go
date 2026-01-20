@@ -13,7 +13,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
+
+// withURLParam adds a Chi URL parameter to a request for testing
+func withURLParam(r *http.Request, key, value string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+}
 
 // mockClaudeManager implements a testable Claude manager
 type mockClaudeManager struct {
@@ -171,7 +180,7 @@ func TestHandlers_GetSession(t *testing.T) {
 	repo.CreateMessage(session.ID, "user", "Hello", nil)
 
 	req := httptest.NewRequest("GET", "/api/sessions/"+session.ID, nil)
-	req.SetPathValue("id", session.ID)
+	req = withURLParam(req, "id", session.ID)
 	w := httptest.NewRecorder()
 
 	handlers.GetSession(w, req)
@@ -198,7 +207,7 @@ func TestHandlers_GetSession_NotFound(t *testing.T) {
 	defer cleanup()
 
 	req := httptest.NewRequest("GET", "/api/sessions/nonexistent", nil)
-	req.SetPathValue("id", "nonexistent")
+	req = withURLParam(req, "id", "nonexistent")
 	w := httptest.NewRecorder()
 
 	handlers.GetSession(w, req)
@@ -217,7 +226,7 @@ func TestHandlers_DeleteSession(t *testing.T) {
 	session, _ := repo.CreateSession(&title, nil)
 
 	req := httptest.NewRequest("DELETE", "/api/sessions/"+session.ID, nil)
-	req.SetPathValue("id", session.ID)
+	req = withURLParam(req, "id", session.ID)
 	w := httptest.NewRecorder()
 
 	handlers.DeleteSession(w, req)
@@ -239,7 +248,7 @@ func TestHandlers_DeleteSession_NotFound(t *testing.T) {
 	defer cleanup()
 
 	req := httptest.NewRequest("DELETE", "/api/sessions/nonexistent", nil)
-	req.SetPathValue("id", "nonexistent")
+	req = withURLParam(req, "id", "nonexistent")
 	w := httptest.NewRecorder()
 
 	handlers.DeleteSession(w, req)
@@ -267,7 +276,7 @@ func TestHandlers_Prompt_ValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/sessions/test/prompt", strings.NewReader(tt.body))
-			req.SetPathValue("id", "test")
+			req = withURLParam(req, "id", "test")
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -297,7 +306,7 @@ func TestHandlers_Approve_ValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/sessions/test/approve", strings.NewReader(tt.body))
-			req.SetPathValue("id", "test")
+			req = withURLParam(req, "id", "test")
 			req.Header.Set("Content-Type", "application/json")
 			w := httptest.NewRecorder()
 
@@ -377,11 +386,12 @@ func TestHandlers_Prompt_SSEFlow(t *testing.T) {
 	// because it spawns a process. Instead, verify the setup works.
 	req := httptest.NewRequest("POST", "/api/sessions/"+session.ID+"/prompt",
 		strings.NewReader(`{"prompt":"test"}`))
-	req.SetPathValue("id", session.ID)
+	req = withURLParam(req, "id", session.ID)
 	req.Header.Set("Content-Type", "application/json")
 
 	// Create a context with timeout to prevent hanging
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	// Use req.Context() as parent to preserve Chi route context
+	ctx, cancel := context.WithTimeout(req.Context(), 100*time.Millisecond)
 	defer cancel()
 	req = req.WithContext(ctx)
 
