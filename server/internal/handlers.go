@@ -1,23 +1,34 @@
 package internal
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
-type Handlers struct {
-	repo   *Repository
-	claude *ClaudeManager
+// ClaudeRunner interface for dependency injection
+type ClaudeRunner interface {
+	RunPrompt(ctx context.Context, sessionID string, claudeSessionID *string, prompt string, workingDir *string, onEvent func(line []byte) error) (string, error)
+	SendPermissionResponse(sessionID, toolUseID, decision string) error
+	KillProcess(sessionID string) error
 }
 
-func NewHandlers(repo *Repository, claude *ClaudeManager) *Handlers {
+type Handlers struct {
+	repo          *Repository
+	claude        ClaudeRunner
+	promptTimeout time.Duration
+}
+
+func NewHandlers(repo *Repository, claude ClaudeRunner, promptTimeout time.Duration) *Handlers {
 	return &Handlers{
-		repo:   repo,
-		claude: claude,
+		repo:          repo,
+		claude:        claude,
+		promptTimeout: promptTimeout,
 	}
 }
 
@@ -40,6 +51,10 @@ func parseJSON(r *http.Request, v any) error {
 // Handlers
 
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
+	if err := h.repo.Ping(); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "error", "error": "database unavailable"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -123,8 +138,14 @@ func (h *Handlers) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	// Kill any running process
 	h.claude.KillProcess(id)
 
-	if err := h.repo.DeleteSession(id); err != nil {
+	deleted, err := h.repo.DeleteSession(id)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if !deleted {
+		writeError(w, http.StatusNotFound, "session not found")
 		return
 	}
 
@@ -207,12 +228,17 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 	var assistantContent strings.Builder
 	var toolCalls []json.RawMessage
 
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(r.Context(), h.promptTimeout)
+	defer cancel()
+
 	// Run prompt with streaming
 	claudeSessionID, err := h.claude.RunPrompt(
-		r.Context(),
+		ctx,
 		id,
 		session.ClaudeSessionID,
 		req.Prompt,
+		session.WorkingDirectory,
 		func(line []byte) error {
 			// Parse event type
 			var event ClaudeEvent
@@ -260,12 +286,16 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 			data, _ := json.Marshal(toolCalls)
 			toolCallsJSON = data
 		}
-		h.repo.CreateMessage(id, "assistant", assistantContent.String(), toolCallsJSON)
+		if _, err := h.repo.CreateMessage(id, "assistant", assistantContent.String(), toolCallsJSON); err != nil {
+			log.Printf("Warning: failed to save assistant message for session %s: %v", id, err)
+		}
 	}
 
 	// Update Claude session ID if we got a new one
 	if claudeSessionID != "" && (session.ClaudeSessionID == nil || *session.ClaudeSessionID != claudeSessionID) {
-		h.repo.UpdateSessionClaudeID(id, claudeSessionID)
+		if err := h.repo.UpdateSessionClaudeID(id, claudeSessionID); err != nil {
+			log.Printf("Warning: failed to update Claude session ID for session %s: %v", id, err)
+		}
 	}
 
 	if err != nil {

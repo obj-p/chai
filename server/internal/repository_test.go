@@ -96,14 +96,26 @@ func TestRepository_DeleteSession(t *testing.T) {
 	title := "To Delete"
 	session, _ := repo.CreateSession(&title, nil)
 
-	err := repo.DeleteSession(session.ID)
+	deleted, err := repo.DeleteSession(session.ID)
 	if err != nil {
 		t.Fatalf("DeleteSession failed: %v", err)
+	}
+	if !deleted {
+		t.Error("Expected DeleteSession to return true for existing session")
 	}
 
 	_, err = repo.GetSession(session.ID)
 	if err == nil {
 		t.Error("Expected error getting deleted session")
+	}
+
+	// Test deleting non-existent session returns false
+	deleted, err = repo.DeleteSession("nonexistent")
+	if err != nil {
+		t.Fatalf("DeleteSession failed: %v", err)
+	}
+	if deleted {
+		t.Error("Expected DeleteSession to return false for non-existent session")
 	}
 }
 
@@ -142,7 +154,7 @@ func TestRepository_Messages(t *testing.T) {
 		t.Error("Message ID should not be empty")
 	}
 
-	msg2, _ := repo.CreateMessage(session.ID, "assistant", "Hi there!", nil)
+	_, _ = repo.CreateMessage(session.ID, "assistant", "Hi there!", nil)
 
 	// Get messages
 	messages, err := repo.GetSessionMessages(session.ID)
@@ -160,10 +172,9 @@ func TestRepository_Messages(t *testing.T) {
 	}
 
 	// Verify cascade delete
-	repo.DeleteSession(session.ID)
+	_, _ = repo.DeleteSession(session.ID)
 	messages, _ = repo.GetSessionMessages(session.ID)
 	if len(messages) != 0 {
 		t.Errorf("Expected 0 messages after session delete, got %d", len(messages))
 	}
-	_ = msg2 // use variable
 }

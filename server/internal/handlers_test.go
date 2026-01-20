@@ -27,6 +27,7 @@ func (m *mockClaudeManager) RunPrompt(
 	sessionID string,
 	claudeSessionID *string,
 	prompt string,
+	workingDir *string,
 	onEvent func(line []byte) error,
 ) (string, error) {
 	if m.err != nil {
@@ -55,13 +56,6 @@ func (m *mockClaudeManager) KillProcess(sessionID string) error {
 	return nil
 }
 
-// ClaudeRunner interface for dependency injection
-type ClaudeRunner interface {
-	RunPrompt(ctx context.Context, sessionID string, claudeSessionID *string, prompt string, onEvent func(line []byte) error) (string, error)
-	SendPermissionResponse(sessionID, toolUseID, decision string) error
-	KillProcess(sessionID string) error
-}
-
 func setupTestServer(t *testing.T) (*Repository, *Handlers, func()) {
 	t.Helper()
 
@@ -78,7 +72,7 @@ func setupTestServer(t *testing.T) (*Repository, *Handlers, func()) {
 	}
 
 	claude := NewClaudeManager("/tmp", "claude")
-	handlers := NewHandlers(repo, claude)
+	handlers := NewHandlers(repo, claude, 5*time.Minute)
 
 	cleanup := func() {
 		repo.Close()
@@ -103,7 +97,9 @@ func TestHandlers_Health(t *testing.T) {
 	}
 
 	var body map[string]string
-	json.NewDecoder(resp.Body).Decode(&body)
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
 	if body["status"] != "ok" {
 		t.Errorf("status = %v, want ok", body["status"])
 	}
@@ -126,7 +122,9 @@ func TestHandlers_CreateSession(t *testing.T) {
 	}
 
 	var session Session
-	json.NewDecoder(resp.Body).Decode(&session)
+	if err := json.NewDecoder(resp.Body).Decode(&session); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
 	if session.ID == "" {
 		t.Error("Session ID should not be empty")
 	}
@@ -156,7 +154,9 @@ func TestHandlers_ListSessions(t *testing.T) {
 	}
 
 	var sessions []Session
-	json.NewDecoder(resp.Body).Decode(&sessions)
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
 	if len(sessions) != 2 {
 		t.Errorf("Got %d sessions, want 2", len(sessions))
 	}
@@ -182,7 +182,9 @@ func TestHandlers_GetSession(t *testing.T) {
 	}
 
 	var result SessionResponse
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
 	if result.Session.ID != session.ID {
 		t.Errorf("Session ID = %v, want %v", result.Session.ID, session.ID)
 	}
@@ -229,6 +231,22 @@ func TestHandlers_DeleteSession(t *testing.T) {
 	_, err := repo.GetSession(session.ID)
 	if err == nil {
 		t.Error("Session should be deleted")
+	}
+}
+
+func TestHandlers_DeleteSession_NotFound(t *testing.T) {
+	_, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("DELETE", "/api/sessions/nonexistent", nil)
+	req.SetPathValue("id", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handlers.DeleteSession(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
 
@@ -338,7 +356,9 @@ func TestSSE_EventFormat(t *testing.T) {
 	}
 
 	var parsed map[string]string
-	json.Unmarshal([]byte(events[0].Data), &parsed)
+	if err := json.Unmarshal([]byte(events[0].Data), &parsed); err != nil {
+		t.Fatalf("Failed to decode event data: %v", err)
+	}
 	if parsed["message"] != "hello" {
 		t.Errorf("Data.message = %v, want hello", parsed["message"])
 	}

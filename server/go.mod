@@ -1,6 +1,6 @@
 module chai/server
 
-go 1.25.6
+go 1.22
 
 require (
 	github.com/google/uuid v1.6.0

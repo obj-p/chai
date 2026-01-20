@@ -24,6 +24,15 @@ go test -v ./internal/... -run TestName      # Run single test
 # Run
 make run                # Build and run (port 8080)
 ./server -port 8080 -db chai.db -workdir /path/to/project
+
+# Server flags
+./server \
+  -port 8080 \                    # HTTP port (default: 8080)
+  -db chai.db \                   # SQLite database path (default: chai.db)
+  -workdir /path/to/project \     # Default working directory for Claude CLI
+  -claude-cmd claude \            # Path to Claude CLI command (default: claude)
+  -prompt-timeout 5m \            # Timeout for prompt requests (default: 5m)
+  -shutdown-timeout 30s           # Graceful shutdown timeout (default: 30s)
 ```
 
 ## Architecture
@@ -45,6 +54,8 @@ internal/
 - **SQLite**: Single-file database with foreign keys enabled
 - **SSE streaming**: `/api/sessions/{id}/prompt` streams Claude CLI JSON output to client
 - **stdin JSON protocol**: Claude CLI runs with `--input-format stream-json --permission-prompt-tool stdio`, prompts sent via stdin as `{"type":"user","message":{"role":"user","content":"..."}}`
+- **Graceful shutdown**: Handles SIGINT/SIGTERM, kills Claude processes, then shuts down HTTP server
+- **Per-session working directory**: Sessions can override the default working directory
 
 ### API Endpoints
 
