@@ -276,12 +276,15 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 				return sendEvent("error", map[string]string{"error": "invalid JSON from Claude"})
 			}
 
-			// Persist and forward the raw event
+			// Persist and forward the raw event directly (bypassing sendEvent helper).
+			// We bypass sendEvent because claude events arrive as raw JSON from the CLI,
+			// and sendEvent would re-marshal them, causing double-encoding. Instead, we
+			// persist and write the raw JSON line directly.
 			if _, err := h.repo.CreateEvent(id, promptID, "claude", line); err != nil {
 				log.Printf("Warning: failed to persist claude event for session %s: %v", id, err)
 			}
 
-			// Send to client
+			// Send raw JSON to client (no re-marshaling needed)
 			_, writeErr := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", "claude", line)
 			if writeErr != nil {
 				return writeErr

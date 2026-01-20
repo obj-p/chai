@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -100,10 +101,18 @@ func (r *Repository) migrate() error {
 		return err
 	}
 
-	// Add columns to existing sessions table (error-tolerant for existing DBs)
-	// These will fail silently if columns already exist
-	r.db.Exec(`ALTER TABLE sessions ADD COLUMN stream_status TEXT DEFAULT 'idle'`)
-	r.db.Exec(`ALTER TABLE sessions ADD COLUMN prompt_sequence INTEGER DEFAULT 0`)
+	// Add columns to existing sessions table (for existing DBs created before this migration)
+	// Only "duplicate column" errors are expected and ignored; other errors are logged
+	if _, err := r.db.Exec(`ALTER TABLE sessions ADD COLUMN stream_status TEXT DEFAULT 'idle'`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("Warning: migration error adding stream_status column: %v", err)
+		}
+	}
+	if _, err := r.db.Exec(`ALTER TABLE sessions ADD COLUMN prompt_sequence INTEGER DEFAULT 0`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			log.Printf("Warning: migration error adding prompt_sequence column: %v", err)
+		}
+	}
 
 	// Backfill existing sessions with default values
 	r.db.Exec(`UPDATE sessions SET stream_status = 'idle', prompt_sequence = 0 WHERE stream_status IS NULL`)
@@ -173,7 +182,7 @@ func (r *Repository) ListSessions() ([]Session, error) {
 	}
 	defer rows.Close()
 
-	var sessions []Session
+	sessions := []Session{} // Initialize as empty slice, not nil
 	for rows.Next() {
 		var s Session
 		var streamStatus string
@@ -260,7 +269,7 @@ func (r *Repository) GetSessionMessages(sessionID string) ([]Message, error) {
 	}
 	defer rows.Close()
 
-	var messages []Message
+	messages := []Message{} // Initialize as empty slice, not nil
 	for rows.Next() {
 		var m Message
 		var toolCallsStr *string
@@ -426,7 +435,7 @@ func (r *Repository) GetEventsSince(sessionID string, sinceSequence int64, promp
 	}
 	defer rows.Close()
 
-	var events []SessionEvent
+	events := []SessionEvent{} // Initialize as empty slice, not nil
 	for rows.Next() {
 		var e SessionEvent
 		var dataStr string
