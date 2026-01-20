@@ -56,7 +56,7 @@ func (cm *ClaudeManager) RunPrompt(
 
 	args = append(args, prompt)
 
-	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmd := exec.CommandContext(ctx, cm.claudeCmd, args...)
 	cmd.Dir = cm.workingDir
 
 	stdin, err := cmd.StdinPipe()
