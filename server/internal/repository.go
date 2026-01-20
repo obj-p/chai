@@ -91,6 +91,8 @@ func (r *Repository) migrate() error {
 		ON session_events(session_id, prompt_id, sequence);
 	CREATE INDEX IF NOT EXISTS idx_session_events_session
 		ON session_events(session_id);
+	CREATE INDEX IF NOT EXISTS idx_session_events_session_sequence
+		ON session_events(session_id, sequence);
 	CREATE INDEX IF NOT EXISTS idx_session_events_created
 		ON session_events(created_at);
 	`
@@ -391,6 +393,13 @@ func (r *Repository) CreateEvent(sessionID, promptID, eventType string, data []b
 
 // GetEventsSince retrieves events after a given sequence number.
 // If promptID is empty, returns events for all prompts in the session.
+//
+// Note: Sequence numbers are scoped per-prompt, not per-session. When promptID
+// is empty, sinceSequence filters each prompt independently. For example, if
+// prompt-1 has sequences 1,2,3 and prompt-2 has sequences 1,2,3, calling
+// GetEventsSince(session, 2, "", 100) returns sequence 3 from both prompts.
+// For catch-up after reconnection, clients should specify the promptID to get
+// accurate sequential replay of a single prompt's events.
 func (r *Repository) GetEventsSince(sessionID string, sinceSequence int64, promptID string, limit int) ([]SessionEvent, error) {
 	var rows *sql.Rows
 	var err error
@@ -474,4 +483,33 @@ func (r *Repository) DeleteEventsForCompletedSessions(olderThan time.Duration) (
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// StartEventCleanup starts a background goroutine that periodically cleans up old events.
+// Returns a function to stop the cleanup routine.
+// Events older than maxAge from completed/idle sessions are deleted every interval.
+func (r *Repository) StartEventCleanup(interval, maxAge time.Duration) func() {
+	ticker := time.NewTicker(interval)
+	done := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				deleted, err := r.DeleteEventsForCompletedSessions(maxAge)
+				if err != nil {
+					log.Printf("Event cleanup error: %v", err)
+				} else if deleted > 0 {
+					log.Printf("Event cleanup: deleted %d old events", deleted)
+				}
+			case <-done:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	return func() {
+		close(done)
+	}
 }

@@ -378,7 +378,16 @@ func (h *Handlers) Approve(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
 }
 
-// GetEvents retrieves persisted events for reconnection after mobile backgrounding
+// GetEvents retrieves persisted events for reconnection after mobile backgrounding.
+//
+// Query parameters:
+//   - since_sequence: Return events after this sequence number
+//   - prompt_id: Filter to specific prompt (recommended for catch-up)
+//   - limit: Max events to return (default 100, max 1000)
+//
+// Note: For accurate catch-up after reconnection, specify prompt_id. Sequence
+// numbers are per-prompt, so omitting prompt_id may return events from multiple
+// prompts with overlapping sequence numbers.
 func (h *Handlers) GetEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 )
 
 func setupTestRepo(t *testing.T) (*Repository, func()) {
@@ -240,7 +241,7 @@ func TestRepository_CreateEvent_Concurrent(t *testing.T) {
 
 	wg.Add(numGoroutines)
 	for i := 0; i < numGoroutines; i++ {
-		go func(workerID int) {
+		go func() {
 			defer wg.Done()
 			for j := 0; j < eventsPerGoroutine; j++ {
 				event, err := repo.CreateEvent(session.ID, promptID, "claude", []byte(`{}`))
@@ -250,7 +251,7 @@ func TestRepository_CreateEvent_Concurrent(t *testing.T) {
 				}
 				seqCh <- event.Sequence
 			}
-		}(i)
+		}()
 	}
 
 	wg.Wait()
@@ -468,5 +469,84 @@ func TestRepository_GetLatestEventSequence(t *testing.T) {
 	}
 	if seq != 3 {
 		t.Errorf("Sequence = %d, want 3", seq)
+	}
+}
+
+func TestRepository_DeleteEventsForCompletedSessions(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	// Create two sessions
+	title1 := "Completed Session"
+	title2 := "Streaming Session"
+	session1, _ := repo.CreateSession(&title1, nil)
+	session2, _ := repo.CreateSession(&title2, nil)
+
+	promptID1 := session1.ID + "-1"
+	promptID2 := session2.ID + "-1"
+
+	// Create events for both sessions
+	repo.CreateEvent(session1.ID, promptID1, "connected", []byte(`{}`))
+	repo.CreateEvent(session1.ID, promptID1, "claude", []byte(`{}`))
+	repo.CreateEvent(session1.ID, promptID1, "done", []byte(`{}`))
+
+	repo.CreateEvent(session2.ID, promptID2, "connected", []byte(`{}`))
+	repo.CreateEvent(session2.ID, promptID2, "claude", []byte(`{}`))
+
+	// Mark session1 as completed, leave session2 as streaming
+	repo.UpdateSessionStreamStatus(session1.ID, StreamStatusCompleted)
+	repo.UpdateSessionStreamStatus(session2.ID, StreamStatusStreaming)
+
+	// Use negative duration to set cutoff in the future, ensuring all events are deleted
+	// olderThan = -1s means cutoff = now + 1s, so all events (created_at < future) are deleted
+	deleted, err := repo.DeleteEventsForCompletedSessions(-1 * time.Second)
+	if err != nil {
+		t.Fatalf("DeleteEventsForCompletedSessions failed: %v", err)
+	}
+	if deleted != 3 {
+		t.Errorf("Deleted = %d, want 3 (events from completed session)", deleted)
+	}
+
+	// Verify session1 events are deleted
+	events1, _ := repo.GetEventsSince(session1.ID, 0, "", 100)
+	if len(events1) != 0 {
+		t.Errorf("Expected 0 events for completed session, got %d", len(events1))
+	}
+
+	// Verify session2 events are preserved (still streaming)
+	events2, _ := repo.GetEventsSince(session2.ID, 0, "", 100)
+	if len(events2) != 2 {
+		t.Errorf("Expected 2 events for streaming session, got %d", len(events2))
+	}
+}
+
+func TestRepository_DeleteEventsForCompletedSessions_RespectsAge(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+	promptID := session.ID + "-1"
+
+	// Create events
+	repo.CreateEvent(session.ID, promptID, "connected", []byte(`{}`))
+	repo.CreateEvent(session.ID, promptID, "done", []byte(`{}`))
+
+	// Mark as completed
+	repo.UpdateSessionStreamStatus(session.ID, StreamStatusCompleted)
+
+	// Delete events older than 1 hour - should delete nothing (events are new)
+	deleted, err := repo.DeleteEventsForCompletedSessions(1 * time.Hour)
+	if err != nil {
+		t.Fatalf("DeleteEventsForCompletedSessions failed: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("Deleted = %d, want 0 (events are too new)", deleted)
+	}
+
+	// Verify events still exist
+	events, _ := repo.GetEventsSince(session.ID, 0, "", 100)
+	if len(events) != 2 {
+		t.Errorf("Expected 2 events, got %d", len(events))
 	}
 }
