@@ -50,6 +50,10 @@ func main() {
 	}
 	defer repo.Close()
 
+	// Start background event cleanup (every 5 minutes, delete events older than 1 hour)
+	stopCleanup := repo.StartEventCleanup(5*time.Minute, 1*time.Hour)
+	defer stopCleanup()
+
 	// Initialize Claude manager
 	claude := internal.NewClaudeManager(cfg.WorkDir, cfg.ClaudeCmd)
 
@@ -78,6 +82,7 @@ func main() {
 				r.Delete("/", handlers.DeleteSession)
 				r.Post("/prompt", handlers.Prompt)
 				r.Post("/approve", handlers.Approve)
+				r.Get("/events", handlers.GetEvents)
 			})
 		})
 	})

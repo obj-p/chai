@@ -412,3 +412,206 @@ func TestHandlers_Prompt_SSEFlow(t *testing.T) {
 		t.Error("Expected connected event in response")
 	}
 }
+
+func TestHandlers_GetEvents(t *testing.T) {
+	repo, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	// Create session with events
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+	promptID := session.ID + "-1"
+
+	// Check that CreateEvent is working
+	event1, err := repo.CreateEvent(session.ID, promptID, "connected", []byte(`{"session_id":"test","prompt_id":"test-1"}`))
+	if err != nil {
+		t.Fatalf("CreateEvent 1 failed: %v", err)
+	}
+	t.Logf("Created event 1 with sequence %d", event1.Sequence)
+
+	event2, err := repo.CreateEvent(session.ID, promptID, "claude", []byte(`{"type":"assistant"}`))
+	if err != nil {
+		t.Fatalf("CreateEvent 2 failed: %v", err)
+	}
+	t.Logf("Created event 2 with sequence %d", event2.Sequence)
+
+	event3, err := repo.CreateEvent(session.ID, promptID, "done", []byte(`{"status":"complete"}`))
+	if err != nil {
+		t.Fatalf("CreateEvent 3 failed: %v", err)
+	}
+	t.Logf("Created event 3 with sequence %d", event3.Sequence)
+
+	// Test getting all events
+	req := httptest.NewRequest("GET", "/api/sessions/"+session.ID+"/events", nil)
+	req = withURLParam(req, "id", session.ID)
+	w := httptest.NewRecorder()
+
+	handlers.GetEvents(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Errorf("Status = %d, want %d, body: %s", resp.StatusCode, http.StatusOK, string(body))
+		return
+	}
+
+	var result GetEventsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if len(result.Events) != 3 {
+		t.Errorf("Got %d events, want 3", len(result.Events))
+	}
+	if result.LastSequence != 3 {
+		t.Errorf("LastSequence = %d, want 3", result.LastSequence)
+	}
+	if result.HasMore {
+		t.Error("HasMore should be false")
+	}
+}
+
+func TestHandlers_GetEvents_WithSinceSequence(t *testing.T) {
+	repo, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+	promptID := session.ID + "-1"
+	repo.CreateEvent(session.ID, promptID, "connected", []byte(`{}`))
+	repo.CreateEvent(session.ID, promptID, "claude", []byte(`{}`))
+	repo.CreateEvent(session.ID, promptID, "done", []byte(`{}`))
+
+	// Get events since sequence 1
+	req := httptest.NewRequest("GET", "/api/sessions/"+session.ID+"/events?since_sequence=1", nil)
+	req = withURLParam(req, "id", session.ID)
+	w := httptest.NewRecorder()
+
+	handlers.GetEvents(w, req)
+
+	var result GetEventsResponse
+	json.NewDecoder(w.Result().Body).Decode(&result)
+
+	if len(result.Events) != 2 {
+		t.Errorf("Got %d events, want 2", len(result.Events))
+	}
+	if result.Events[0].Sequence != 2 {
+		t.Errorf("First event sequence = %d, want 2", result.Events[0].Sequence)
+	}
+}
+
+func TestHandlers_GetEvents_NotFound(t *testing.T) {
+	_, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("GET", "/api/sessions/nonexistent/events", nil)
+	req = withURLParam(req, "id", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handlers.GetEvents(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestHandlers_GetEvents_WithLimit(t *testing.T) {
+	repo, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+	promptID := session.ID + "-1"
+
+	// Create 5 events
+	for i := 0; i < 5; i++ {
+		repo.CreateEvent(session.ID, promptID, "claude", []byte(`{}`))
+	}
+
+	// Get with limit=2
+	req := httptest.NewRequest("GET", "/api/sessions/"+session.ID+"/events?limit=2", nil)
+	req = withURLParam(req, "id", session.ID)
+	w := httptest.NewRecorder()
+
+	handlers.GetEvents(w, req)
+
+	var result GetEventsResponse
+	json.NewDecoder(w.Result().Body).Decode(&result)
+
+	if len(result.Events) != 2 {
+		t.Errorf("Got %d events, want 2", len(result.Events))
+	}
+	if !result.HasMore {
+		t.Error("HasMore should be true")
+	}
+	if result.LastSequence != 2 {
+		t.Errorf("LastSequence = %d, want 2", result.LastSequence)
+	}
+}
+
+func TestHandlers_Prompt_ConcurrentBlocked(t *testing.T) {
+	repo, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+
+	// Set session to streaming state (simulates an active prompt)
+	repo.UpdateSessionStreamStatus(session.ID, StreamStatusStreaming)
+
+	// Attempt to send another prompt - should get 409 Conflict
+	req := httptest.NewRequest("POST", "/api/sessions/"+session.ID+"/prompt",
+		strings.NewReader(`{"prompt":"test"}`))
+	req = withURLParam(req, "id", session.ID)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	handlers.Prompt(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("Status = %d, want %d", w.Code, http.StatusConflict)
+	}
+
+	// Verify error message
+	var result map[string]string
+	json.NewDecoder(w.Result().Body).Decode(&result)
+	if result["error"] != "session is already streaming" {
+		t.Errorf("Error = %v, want 'session is already streaming'", result["error"])
+	}
+}
+
+func TestHandlers_GetEvents_StreamStatus(t *testing.T) {
+	repo, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+
+	// Session should be idle initially
+	req := httptest.NewRequest("GET", "/api/sessions/"+session.ID+"/events", nil)
+	req = withURLParam(req, "id", session.ID)
+	w := httptest.NewRecorder()
+
+	handlers.GetEvents(w, req)
+
+	var result GetEventsResponse
+	json.NewDecoder(w.Result().Body).Decode(&result)
+
+	if result.StreamStatus != StreamStatusIdle {
+		t.Errorf("StreamStatus = %s, want idle", result.StreamStatus)
+	}
+
+	// Update to completed
+	repo.UpdateSessionStreamStatus(session.ID, StreamStatusCompleted)
+
+	req = httptest.NewRequest("GET", "/api/sessions/"+session.ID+"/events", nil)
+	req = withURLParam(req, "id", session.ID)
+	w = httptest.NewRecorder()
+
+	handlers.GetEvents(w, req)
+
+	json.NewDecoder(w.Result().Body).Decode(&result)
+
+	if result.StreamStatus != StreamStatusCompleted {
+		t.Errorf("StreamStatus = %s, want completed", result.StreamStatus)
+	}
+}

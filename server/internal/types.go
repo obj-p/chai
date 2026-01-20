@@ -5,14 +5,25 @@ import (
 	"time"
 )
 
+// StreamStatus represents the current streaming state of a session
+type StreamStatus string
+
+const (
+	StreamStatusIdle      StreamStatus = "idle"
+	StreamStatusStreaming StreamStatus = "streaming"
+	StreamStatusCompleted StreamStatus = "completed"
+)
+
 // Session represents a Claude CLI session
 type Session struct {
-	ID               string    `json:"id"`
-	ClaudeSessionID  *string   `json:"claude_session_id,omitempty"`
-	Title            *string   `json:"title,omitempty"`
-	WorkingDirectory *string   `json:"working_directory,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               string       `json:"id"`
+	ClaudeSessionID  *string      `json:"claude_session_id,omitempty"`
+	Title            *string      `json:"title,omitempty"`
+	WorkingDirectory *string      `json:"working_directory,omitempty"`
+	StreamStatus     StreamStatus `json:"stream_status"`
+	PromptSequence   int64        `json:"-"` // Internal counter, not exposed in JSON
+	CreatedAt        time.Time    `json:"created_at"`
+	UpdatedAt        time.Time    `json:"updated_at"`
 }
 
 // Message represents a message in a session
@@ -44,6 +55,25 @@ type PromptRequest struct {
 type ApproveRequest struct {
 	ToolUseID string `json:"tool_use_id"`
 	Decision  string `json:"decision"` // "allow" or "deny"
+}
+
+// SessionEvent represents a persisted SSE event for mobile backgrounding resilience
+type SessionEvent struct {
+	ID        int64           `json:"id"`
+	SessionID string          `json:"session_id"`
+	PromptID  string          `json:"prompt_id"`
+	Sequence  int64           `json:"sequence"`
+	EventType string          `json:"event_type"`
+	Data      json.RawMessage `json:"data"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+// GetEventsResponse contains paginated events for catch-up after reconnection
+type GetEventsResponse struct {
+	Events       []SessionEvent `json:"events"`
+	LastSequence int64          `json:"last_sequence"`
+	HasMore      bool           `json:"has_more"`
+	StreamStatus StreamStatus   `json:"stream_status"`
 }
 
 // Claude CLI streaming types (JSON lines from stdout)
