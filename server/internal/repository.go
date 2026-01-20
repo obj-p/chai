@@ -3,6 +3,7 @@ package internal
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -30,6 +31,11 @@ func NewRepository(dbPath string) (*Repository, error) {
 
 func (r *Repository) Close() error {
 	return r.db.Close()
+}
+
+// Ping verifies database connectivity
+func (r *Repository) Ping() error {
+	return r.db.Ping()
 }
 
 func (r *Repository) migrate() error {
@@ -141,9 +147,16 @@ func (r *Repository) UpdateSessionClaudeID(id, claudeSessionID string) error {
 	return err
 }
 
-func (r *Repository) DeleteSession(id string) error {
-	_, err := r.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
-	return err
+func (r *Repository) DeleteSession(id string) (bool, error) {
+	result, err := r.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
 }
 
 // Message operations
@@ -175,7 +188,9 @@ func (r *Repository) CreateMessage(sessionID, role, content string, toolCalls js
 	}
 
 	// Update session's updated_at
-	r.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now.Unix(), sessionID)
+	if _, err := r.db.Exec(`UPDATE sessions SET updated_at = ? WHERE id = ?`, now.Unix(), sessionID); err != nil {
+		log.Printf("Warning: failed to update session updated_at for session %s: %v", sessionID, err)
+	}
 
 	return msg, nil
 }

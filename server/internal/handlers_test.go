@@ -27,6 +27,7 @@ func (m *mockClaudeManager) RunPrompt(
 	sessionID string,
 	claudeSessionID *string,
 	prompt string,
+	workingDir *string,
 	onEvent func(line []byte) error,
 ) (string, error) {
 	if m.err != nil {
@@ -55,13 +56,6 @@ func (m *mockClaudeManager) KillProcess(sessionID string) error {
 	return nil
 }
 
-// ClaudeRunner interface for dependency injection
-type ClaudeRunner interface {
-	RunPrompt(ctx context.Context, sessionID string, claudeSessionID *string, prompt string, onEvent func(line []byte) error) (string, error)
-	SendPermissionResponse(sessionID, toolUseID, decision string) error
-	KillProcess(sessionID string) error
-}
-
 func setupTestServer(t *testing.T) (*Repository, *Handlers, func()) {
 	t.Helper()
 
@@ -78,7 +72,7 @@ func setupTestServer(t *testing.T) (*Repository, *Handlers, func()) {
 	}
 
 	claude := NewClaudeManager("/tmp", "claude")
-	handlers := NewHandlers(repo, claude)
+	handlers := NewHandlers(repo, claude, 5*time.Minute)
 
 	cleanup := func() {
 		repo.Close()
@@ -229,6 +223,22 @@ func TestHandlers_DeleteSession(t *testing.T) {
 	_, err := repo.GetSession(session.ID)
 	if err == nil {
 		t.Error("Session should be deleted")
+	}
+}
+
+func TestHandlers_DeleteSession_NotFound(t *testing.T) {
+	_, handlers, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	req := httptest.NewRequest("DELETE", "/api/sessions/nonexistent", nil)
+	req.SetPathValue("id", "nonexistent")
+	w := httptest.NewRecorder()
+
+	handlers.DeleteSession(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 	}
 }
 

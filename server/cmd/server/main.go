@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"chai/server/internal"
 )
@@ -17,6 +21,7 @@ func main() {
 	dbPath := flag.String("db", "chai.db", "path to SQLite database")
 	workDir := flag.String("workdir", "", "working directory for Claude CLI (defaults to current dir)")
 	claudeCmd := flag.String("claude-cmd", "claude", "path to Claude CLI command")
+	promptTimeout := flag.Duration("prompt-timeout", 5*time.Minute, "timeout for prompt requests")
 	flag.Parse()
 
 	// Default working directory to current directory
@@ -44,7 +49,7 @@ func main() {
 	claude := internal.NewClaudeManager(*workDir, *claudeCmd)
 
 	// Initialize handlers
-	handlers := internal.NewHandlers(repo, claude)
+	handlers := internal.NewHandlers(repo, claude, *promptTimeout)
 
 	// Set up routes using Go 1.22+ stdlib router
 	mux := http.NewServeMux()
@@ -62,13 +67,40 @@ func main() {
 	mux.HandleFunc("POST /api/sessions/{id}/prompt", handlers.Prompt)
 	mux.HandleFunc("POST /api/sessions/{id}/approve", handlers.Approve)
 
-	// Start server
+	// Create server
 	addr := fmt.Sprintf(":%d", *port)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	// Set up signal handling for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		log.Printf("Received signal %v, shutting down...", sig)
+
+		// Kill all Claude processes
+		claude.Shutdown()
+
+		// Graceful HTTP shutdown with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		}
+	}()
+
+	// Start server
 	log.Printf("Server starting on %s", addr)
 	log.Printf("Database: %s", *dbPath)
 	log.Printf("Working directory: %s", *workDir)
 
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}
+
+	log.Println("Server stopped")
 }

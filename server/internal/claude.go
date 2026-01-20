@@ -53,6 +53,7 @@ func (cm *ClaudeManager) RunPrompt(
 	sessionID string,
 	claudeSessionID *string,
 	prompt string,
+	workingDir *string,
 	onEvent func(line []byte) error,
 ) (string, error) {
 	args := []string{
@@ -67,7 +68,12 @@ func (cm *ClaudeManager) RunPrompt(
 	}
 
 	cmd := exec.CommandContext(ctx, cm.claudeCmd, args...)
-	cmd.Dir = cm.workingDir
+	// Use session working directory if provided, otherwise use default
+	if workingDir != nil && *workingDir != "" {
+		cmd.Dir = *workingDir
+	} else {
+		cmd.Dir = cm.workingDir
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -222,4 +228,18 @@ func (cm *ClaudeManager) KillProcess(sessionID string) error {
 	}
 
 	return proc.cmd.Process.Kill()
+}
+
+// Shutdown terminates all running Claude processes
+func (cm *ClaudeManager) Shutdown() {
+	cm.mu.RLock()
+	sessionIDs := make([]string, 0, len(cm.processes))
+	for id := range cm.processes {
+		sessionIDs = append(sessionIDs, id)
+	}
+	cm.mu.RUnlock()
+
+	for _, id := range sessionIDs {
+		cm.KillProcess(id)
+	}
 }
