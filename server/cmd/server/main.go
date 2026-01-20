@@ -16,6 +16,7 @@ func main() {
 	port := flag.Int("port", 8080, "port to listen on")
 	dbPath := flag.String("db", "chai.db", "path to SQLite database")
 	workDir := flag.String("workdir", "", "working directory for Claude CLI (defaults to current dir)")
+	claudeCmd := flag.String("claude-cmd", "claude", "path to Claude CLI command")
 	flag.Parse()
 
 	// Default working directory to current directory
@@ -40,7 +41,7 @@ func main() {
 	defer repo.Close()
 
 	// Initialize Claude manager
-	claude := internal.NewClaudeManager(*workDir)
+	claude := internal.NewClaudeManager(*workDir, *claudeCmd)
 
 	// Initialize handlers
 	handlers := internal.NewHandlers(repo, claude)

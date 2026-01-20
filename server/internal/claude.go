@@ -22,13 +22,15 @@ type ClaudeProcess struct {
 // ClaudeManager handles Claude CLI interactions
 type ClaudeManager struct {
 	workingDir string
+	claudeCmd  string
 	processes  map[string]*ClaudeProcess // sessionID -> process
 	mu         sync.RWMutex
 }
 
-func NewClaudeManager(workingDir string) *ClaudeManager {
+func NewClaudeManager(workingDir, claudeCmd string) *ClaudeManager {
 	return &ClaudeManager{
 		workingDir: workingDir,
+		claudeCmd:  claudeCmd,
 		processes:  make(map[string]*ClaudeProcess),
 	}
 }

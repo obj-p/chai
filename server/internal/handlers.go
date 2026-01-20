@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -169,12 +170,16 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
+
+	// Flush headers immediately
+	flusher.Flush()
 
 	// Helper to send SSE events
 	sendEvent := func(event string, data any) error {
@@ -189,6 +194,14 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return nil
 	}
+
+	// Send initial connected event
+	if err := sendEvent("connected", map[string]string{"session_id": id}); err != nil {
+		log.Printf("Failed to send connected event: %v", err)
+		return
+	}
+
+	log.Printf("Starting Claude CLI for session %s", id)
 
 	// Accumulate assistant content for saving
 	var assistantContent strings.Builder
@@ -238,6 +251,8 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 
+	log.Printf("Claude CLI finished for session %s, claudeSessionID=%s, err=%v", id, claudeSessionID, err)
+
 	// Save assistant message if we got content
 	if assistantContent.Len() > 0 {
 		var toolCallsJSON json.RawMessage
@@ -254,6 +269,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
+		log.Printf("Claude CLI error: %v", err)
 		sendEvent("error", map[string]string{"error": err.Error()})
 		return
 	}
