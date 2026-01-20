@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	// Load configuration (flag > env > default)
-	cfg, err := internal.LoadConfig(f)
+	cfg, err := internal.LoadConfig(f, nil)
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
