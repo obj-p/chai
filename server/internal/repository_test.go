@@ -2,6 +2,7 @@ package internal
 
 import (
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -215,6 +216,71 @@ func TestRepository_CreateEvent(t *testing.T) {
 	}
 	if event3.Sequence != 3 {
 		t.Errorf("Sequence = %d, want 3", event3.Sequence)
+	}
+}
+
+func TestRepository_CreateEvent_Concurrent(t *testing.T) {
+	repo, cleanup := setupTestRepo(t)
+	defer cleanup()
+
+	title := "Test"
+	session, _ := repo.CreateSession(&title, nil)
+	promptID := session.ID + "-1"
+
+	// Launch goroutines to create events concurrently
+	// Using moderate concurrency (3 workers) to test sequence uniqueness
+	// without overwhelming SQLite's transaction handling
+	const numGoroutines = 3
+	const eventsPerGoroutine = 3
+	totalEvents := numGoroutines * eventsPerGoroutine
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, totalEvents)
+	seqCh := make(chan int64, totalEvents)
+
+	wg.Add(numGoroutines)
+	for i := 0; i < numGoroutines; i++ {
+		go func(workerID int) {
+			defer wg.Done()
+			for j := 0; j < eventsPerGoroutine; j++ {
+				event, err := repo.CreateEvent(session.ID, promptID, "claude", []byte(`{}`))
+				if err != nil {
+					errCh <- err
+					return
+				}
+				seqCh <- event.Sequence
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+	close(seqCh)
+
+	// Check for errors
+	for err := range errCh {
+		t.Fatalf("CreateEvent failed: %v", err)
+	}
+
+	// Collect all sequences
+	sequences := make(map[int64]bool)
+	for seq := range seqCh {
+		if sequences[seq] {
+			t.Errorf("Duplicate sequence number: %d", seq)
+		}
+		sequences[seq] = true
+	}
+
+	// Verify all sequences are present (1 to N)
+	if len(sequences) != totalEvents {
+		t.Errorf("Expected %d unique sequences, got %d", totalEvents, len(sequences))
+	}
+
+	// Verify sequences are contiguous from 1 to N
+	for i := int64(1); i <= int64(totalEvents); i++ {
+		if !sequences[i] {
+			t.Errorf("Missing sequence number: %d", i)
+		}
 	}
 }
 

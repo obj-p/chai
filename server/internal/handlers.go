@@ -192,6 +192,10 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "session is already streaming")
 			return
 		}
+		if errors.Is(err, ErrSessionNotFound) {
+			writeError(w, http.StatusNotFound, "session not found")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

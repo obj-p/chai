@@ -24,10 +24,14 @@ type Repository struct {
 }
 
 func NewRepository(dbPath string) (*Repository, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_journal_mode=WAL")
+	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, err
 	}
+
+	// Limit connections to 1 for writes to avoid SQLite lock contention
+	// SQLite handles concurrent reads well but only allows one writer at a time
+	db.SetMaxOpenConns(1)
 
 	repo := &Repository{db: db}
 	if err := repo.migrate(); err != nil {
@@ -273,6 +277,17 @@ func (r *Repository) GetSessionMessages(sessionID string) ([]Message, error) {
 }
 
 // Event operations for mobile backgrounding resilience
+//
+// Performance note: Each event is persisted in its own transaction to ensure
+// atomic sequence generation. While this adds overhead, it's acceptable because:
+// 1. SQLite with WAL mode handles small writes efficiently
+// 2. SetMaxOpenConns(1) serializes writes, preventing lock contention
+// 3. Events arrive sequentially from Claude CLI, not in bursts
+// 4. Mobile catch-up requires complete event replay for UI reconstruction
+//
+// If performance becomes an issue with high-frequency events, consider:
+// - Batching events (persist every N events or every Xms)
+// - Using auto-increment ID as sequence instead of SELECT MAX + 1
 
 // UpdateSessionStreamStatus updates the streaming status of a session
 func (r *Repository) UpdateSessionStreamStatus(id string, status StreamStatus) error {
