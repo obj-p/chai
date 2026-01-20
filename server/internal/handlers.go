@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -183,8 +185,20 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Start new prompt - this handles concurrent request blocking atomically
+	promptID, err := h.repo.StartNewPrompt(id)
+	if err != nil {
+		if errors.Is(err, ErrSessionBusy) {
+			writeError(w, http.StatusConflict, "session is already streaming")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	// Save user message
 	if _, err := h.repo.CreateMessage(id, "user", req.Prompt, nil); err != nil {
+		h.repo.UpdateSessionStreamStatus(id, StreamStatusIdle)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -197,6 +211,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		h.repo.UpdateSessionStreamStatus(id, StreamStatusIdle)
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
@@ -204,13 +219,21 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 	// Flush headers immediately
 	flusher.Flush()
 
-	// Helper to send SSE events
-	sendEvent := func(event string, data any) error {
+	// Helper to persist and send SSE events
+	sendEvent := func(eventType string, data any) error {
 		jsonData, err := json.Marshal(data)
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+
+		// Persist the event first
+		if _, err := h.repo.CreateEvent(id, promptID, eventType, jsonData); err != nil {
+			log.Printf("Warning: failed to persist event for session %s: %v", id, err)
+			// Continue even if persistence fails - client should still get the event
+		}
+
+		// Send to client
+		_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", eventType, jsonData)
 		if err != nil {
 			return err
 		}
@@ -218,13 +241,14 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 		return nil
 	}
 
-	// Send initial connected event
-	if err := sendEvent("connected", map[string]string{"session_id": id}); err != nil {
+	// Send initial connected event with prompt_id for reconnection
+	if err := sendEvent("connected", map[string]string{"session_id": id, "prompt_id": promptID}); err != nil {
 		log.Printf("Failed to send connected event: %v", err)
+		h.repo.UpdateSessionStreamStatus(id, StreamStatusIdle)
 		return
 	}
 
-	log.Printf("Starting Claude CLI for session %s", id)
+	log.Printf("Starting Claude CLI for session %s, prompt %s", id, promptID)
 
 	// Accumulate assistant content for saving
 	var assistantContent strings.Builder
@@ -235,7 +259,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Run prompt with streaming
-	claudeSessionID, err := h.claude.RunPrompt(
+	claudeSessionID, runErr := h.claude.RunPrompt(
 		ctx,
 		id,
 		session.ClaudeSessionID,
@@ -248,10 +272,17 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 				return sendEvent("error", map[string]string{"error": "invalid JSON from Claude"})
 			}
 
-			// Forward the raw event
-			if err := sendEvent("claude", json.RawMessage(line)); err != nil {
-				return err
+			// Persist and forward the raw event
+			if _, err := h.repo.CreateEvent(id, promptID, "claude", line); err != nil {
+				log.Printf("Warning: failed to persist claude event for session %s: %v", id, err)
 			}
+
+			// Send to client
+			_, writeErr := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", "claude", line)
+			if writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
 
 			// Accumulate content for assistant message
 			switch event.Type {
@@ -279,7 +310,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 
-	log.Printf("Claude CLI finished for session %s, claudeSessionID=%s, err=%v", id, claudeSessionID, err)
+	log.Printf("Claude CLI finished for session %s, claudeSessionID=%s, err=%v", id, claudeSessionID, runErr)
 
 	// Save assistant message if we got content
 	if assistantContent.Len() > 0 {
@@ -300,13 +331,16 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err != nil {
-		log.Printf("Claude CLI error: %v", err)
-		sendEvent("error", map[string]string{"error": err.Error()})
+	// Handle errors and send final event
+	if runErr != nil {
+		log.Printf("Claude CLI error: %v", runErr)
+		sendEvent("error", map[string]string{"error": runErr.Error()})
+		h.repo.UpdateSessionStreamStatus(id, StreamStatusIdle)
 		return
 	}
 
 	sendEvent("done", map[string]string{"status": "complete"})
+	h.repo.UpdateSessionStreamStatus(id, StreamStatusCompleted)
 }
 
 func (h *Handlers) Approve(w http.ResponseWriter, r *http.Request) {
@@ -338,4 +372,71 @@ func (h *Handlers) Approve(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "sent"})
+}
+
+// GetEvents retrieves persisted events for reconnection after mobile backgrounding
+func (h *Handlers) GetEvents(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		writeError(w, http.StatusBadRequest, "missing session id")
+		return
+	}
+
+	// Parse and validate query params
+	sinceSeq, _ := strconv.ParseInt(r.URL.Query().Get("since_sequence"), 10, 64)
+	promptID := r.URL.Query().Get("prompt_id")
+
+	// Validate limit (default 100, max 1000)
+	limit := 100
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil {
+			limit = parsed
+		}
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	// Verify session exists
+	session, err := h.repo.GetSession(id)
+	if err == sql.ErrNoRows {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Fetch events (request limit+1 to detect has_more)
+	events, err := h.repo.GetEventsSince(id, sinceSeq, promptID, limit+1)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	hasMore := len(events) > limit
+	if hasMore {
+		events = events[:limit]
+	}
+
+	var lastSeq int64
+	if len(events) > 0 {
+		lastSeq = events[len(events)-1].Sequence
+	}
+
+	// Ensure events is not nil for JSON
+	if events == nil {
+		events = []SessionEvent{}
+	}
+
+	writeJSON(w, http.StatusOK, GetEventsResponse{
+		Events:       events,
+		LastSequence: lastSeq,
+		HasMore:      hasMore,
+		StreamStatus: session.StreamStatus,
+	})
 }

@@ -78,6 +78,7 @@ func main() {
 				r.Delete("/", handlers.DeleteSession)
 				r.Post("/prompt", handlers.Prompt)
 				r.Post("/approve", handlers.Approve)
+				r.Get("/events", handlers.GetEvents)
 			})
 		})
 	})
