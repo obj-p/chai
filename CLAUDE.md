@@ -50,7 +50,7 @@ internal/
 
 ### Key Design Decisions
 
-- **Chi router**: Uses github.com/go-chi/chi/v5 for routing with built-in middleware (RequestID, Logger, Recoverer). SSE endpoints excluded from timeout middleware.
+- **Chi router**: Uses github.com/go-chi/chi/v5 for routing with built-in middleware (RequestID, Logger, Recoverer)
 - **SQLite**: Single-file database with foreign keys enabled
 - **SSE streaming**: `/api/sessions/{id}/prompt` streams Claude CLI JSON output to client
 - **stdin JSON protocol**: Claude CLI runs with `--input-format stream-json --permission-prompt-tool stdio`, prompts sent via stdin as `{"type":"user","message":{"role":"user","content":"..."}}`
