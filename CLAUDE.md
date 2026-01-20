@@ -35,6 +35,41 @@ make run                # Build and run (port 8080)
   -shutdown-timeout 30s           # Graceful shutdown timeout (default: 30s)
 ```
 
+## Configuration
+
+Configuration can be set via command-line flags or environment variables.
+
+**Precedence (highest to lowest):**
+1. Command-line flags
+2. Environment variables
+3. Default values
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `-port` | `CHAI_PORT` | `8080` | HTTP port |
+| `-db` | `CHAI_DB` | `chai.db` | SQLite database path |
+| `-workdir` | `CHAI_WORKDIR` | (current dir) | Working directory for Claude CLI |
+| `-claude-cmd` | `CHAI_CLAUDE_CMD` | `claude` | Path to Claude CLI command |
+| `-prompt-timeout` | `CHAI_PROMPT_TIMEOUT` | `5m` | Timeout for prompt requests |
+| `-shutdown-timeout` | `CHAI_SHUTDOWN_TIMEOUT` | `30s` | Graceful shutdown timeout |
+
+**Path resolution:** If `CHAI_DB` is a relative path, it is resolved relative to `CHAI_WORKDIR`.
+
+**Example with environment variables:**
+```bash
+export CHAI_PORT=3000
+export CHAI_DB=/data/chai.db
+export CHAI_WORKDIR=/projects/myapp
+./server
+```
+
+**Example with Docker:**
+```bash
+docker run -e CHAI_PORT=3000 -e CHAI_WORKDIR=/project -v $(pwd):/project chai
+```
+
+See `server/.env.example` for a template configuration file.
+
 ## Architecture
 
 ### Server Structure (`server/`)
@@ -42,6 +77,7 @@ make run                # Build and run (port 8080)
 ```
 cmd/server/main.go     - Entry point, Chi routing with middleware
 internal/
+  config.go            - Configuration struct, flag/env parsing with precedence
   types.go             - Domain types, API DTOs, Claude CLI event types
   repository.go        - SQLite operations (sessions, messages)
   claude.go            - Claude CLI process management, stdin/stdout streaming

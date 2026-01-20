@@ -10,7 +10,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,41 +18,42 @@ import (
 )
 
 func main() {
-	// Flags
-	port := flag.Int("port", 8080, "port to listen on")
-	dbPath := flag.String("db", "chai.db", "path to SQLite database")
-	workDir := flag.String("workdir", "", "working directory for Claude CLI (defaults to current dir)")
-	claudeCmd := flag.String("claude-cmd", "claude", "path to Claude CLI command")
-	promptTimeout := flag.Duration("prompt-timeout", 5*time.Minute, "timeout for prompt requests")
-	shutdownTimeout := flag.Duration("shutdown-timeout", 30*time.Second, "timeout for graceful shutdown")
+	// Register flags
+	f := internal.RegisterFlags()
 	flag.Parse()
 
+	// Load configuration (flag > env > default)
+	cfg, err := internal.LoadConfig(f, nil)
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
 	// Default working directory to current directory
-	if *workDir == "" {
+	if cfg.WorkDir == "" {
 		wd, err := os.Getwd()
 		if err != nil {
 			log.Fatalf("Failed to get working directory: %v", err)
 		}
-		*workDir = wd
+		cfg.WorkDir = wd
 	}
 
 	// Make db path absolute
-	if !filepath.IsAbs(*dbPath) {
-		*dbPath = filepath.Join(*workDir, *dbPath)
+	if !filepath.IsAbs(cfg.DBPath) {
+		cfg.DBPath = filepath.Join(cfg.WorkDir, cfg.DBPath)
 	}
 
 	// Initialize repository
-	repo, err := internal.NewRepository(*dbPath)
+	repo, err := internal.NewRepository(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer repo.Close()
 
 	// Initialize Claude manager
-	claude := internal.NewClaudeManager(*workDir, *claudeCmd)
+	claude := internal.NewClaudeManager(cfg.WorkDir, cfg.ClaudeCmd)
 
 	// Initialize handlers
-	handlers := internal.NewHandlers(repo, claude, *promptTimeout)
+	handlers := internal.NewHandlers(repo, claude, cfg.PromptTimeout)
 
 	// Set up Chi router with middleware
 	r := chi.NewRouter()
@@ -82,7 +82,7 @@ func main() {
 	})
 
 	// Create server
-	addr := fmt.Sprintf(":%d", *port)
+	addr := fmt.Sprintf(":%d", cfg.Port)
 	server := &http.Server{
 		Addr:    addr,
 		Handler: r,
@@ -100,7 +100,7 @@ func main() {
 		claude.Shutdown()
 
 		// Graceful HTTP shutdown with timeout
-		ctx, cancel := context.WithTimeout(context.Background(), *shutdownTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 		if err := server.Shutdown(ctx); err != nil {
 			log.Printf("HTTP server shutdown error: %v", err)
@@ -109,8 +109,8 @@ func main() {
 
 	// Start server
 	log.Printf("Server starting on %s", addr)
-	log.Printf("Database: %s", *dbPath)
-	log.Printf("Working directory: %s", *workDir)
+	log.Printf("Database: %s", cfg.DBPath)
+	log.Printf("Working directory: %s", cfg.WorkDir)
 
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
