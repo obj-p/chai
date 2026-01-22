@@ -4,8 +4,7 @@ import SwiftUI
 struct ChaiApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Chai")
-                .padding()
+            SessionListView()
         }
     }
 }
