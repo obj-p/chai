@@ -149,6 +149,26 @@ make serve                       # Start Caddy HTTPS server
 
 **Note:** For non-interactive builds (CI, scripts), the keychain must be unlocked and `MATCH_KEYCHAIN_PASSWORD` should be set in `.env`.
 
+### Installing on iOS Device
+
+With Caddy running (`make serve`), on your iOS device:
+
+1. **Install mkcert CA** (one-time per device):
+   - Visit `https://<CHAI_DISTRIBUTION_DOMAIN>/ca.pem` in Safari
+   - Tap "Allow" to download the profile
+   - Go to Settings → General → VPN & Device Management
+   - Tap the downloaded profile and install it
+   - Go to Settings → General → About → Certificate Trust Settings
+   - Enable full trust for the mkcert certificate
+
+2. **Install the app**:
+   - Visit `https://<CHAI_DISTRIBUTION_DOMAIN>/ios/`
+   - Tap "Install App"
+   - After installation, trust the developer certificate if prompted:
+     Settings → General → VPN & Device Management → tap developer profile → Trust
+
+The mkcert CA is named "mkcert [username]@[hostname]" based on the machine that generated it.
+
 ### Configuration
 
 iOS-specific environment variables (in `.env`):
