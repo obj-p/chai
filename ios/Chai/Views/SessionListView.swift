@@ -6,7 +6,6 @@ struct SessionListView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showSettings = false
-    @State private var sessionToDelete: Session?
 
     private let client = APIClient()
 
@@ -30,7 +29,7 @@ struct SessionListView: View {
                                 SessionRowView(session: session)
                             }
                         }
-                        .onDelete(perform: confirmDelete)
+                        .onDelete(perform: deleteSession)
                     }
                 }
             }
@@ -61,20 +60,6 @@ struct SessionListView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
-            .confirmationDialog(
-                "Delete Session?",
-                isPresented: .init(
-                    get: { sessionToDelete != nil },
-                    set: { if !$0 { sessionToDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let session = sessionToDelete {
-                        Task { await deleteSession(session) }
-                    }
-                }
-            }
             .task { await loadSessions() }
             .refreshable { await loadSessions() }
         }
@@ -104,19 +89,26 @@ struct SessionListView: View {
         }
     }
 
-    private func confirmDelete(at offsets: IndexSet) {
-        if let index = offsets.first {
-            sessionToDelete = sessions[index]
-        }
-    }
+    private func deleteSession(at offsets: IndexSet) {
+        guard let index = offsets.first else { return }
+        let session = sessions[index]
 
-    private func deleteSession(_ session: Session) async {
-        guard let baseURL else { return }
-        do {
-            try await client.deleteSession(baseURL: baseURL, id: session.id)
-            sessions.removeAll { $0.id == session.id }
-        } catch {
-            errorMessage = error.localizedDescription
+        // Remove immediately so SwiftUI animates deletion
+        sessions.remove(at: index)
+
+        Task {
+            guard let baseURL else { return }
+            do {
+                try await client.deleteSession(baseURL: baseURL, id: session.id)
+            } catch {
+                // Restore row on API failure
+                await MainActor.run {
+                    if !sessions.contains(where: { $0.id == session.id }) {
+                        sessions.insert(session, at: min(index, sessions.count))
+                    }
+                    errorMessage = error.localizedDescription
+                }
+            }
         }
     }
 }
