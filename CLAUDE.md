@@ -112,3 +112,67 @@ The server spawns Claude CLI processes with streaming JSON I/O:
 - JSON events streamed from stdout, forwarded as SSE to client
 - Permission responses written to stdin when tools need approval
 - Process terminates after receiving "result" event
+
+## iOS App (`ios/`)
+
+### Prerequisites
+
+```bash
+# One-time system setup
+brew bundle                      # Install xcodegen, caddy, mkcert (from repo root)
+mkcert -install                  # Install local CA (requires sudo)
+```
+
+### Build Commands
+
+All commands run from `ios/` directory. **Important:** Source env vars before running make commands:
+
+```bash
+set -a && source ../.env && set +a
+```
+
+```bash
+# Setup (first time)
+bundle install                   # Install Fastlane
+security unlock-keychain ~/Library/Keychains/login.keychain-db  # Unlock keychain
+bundle exec fastlane match adhoc # Set up certificates/profiles
+
+# Development
+make generate                    # Generate Xcode project
+make build                       # Build ad-hoc IPA
+make distribute                  # Build IPA + generate distribution files
+
+# Distribution server
+make certs                       # Generate TLS certs with mkcert
+make serve                       # Start Caddy HTTPS server
+```
+
+**Note:** For non-interactive builds (CI, scripts), the keychain must be unlocked and `MATCH_KEYCHAIN_PASSWORD` should be set in `.env`.
+
+### Configuration
+
+iOS-specific environment variables (in `.env`):
+
+| Variable | Description |
+|----------|-------------|
+| `CHAI_DISTRIBUTION_DOMAIN` | Domain for ad-hoc distribution (e.g., `machine.tailnet.ts.net`) |
+| `CHAI_TEAM_ID` | Apple Developer Team ID |
+| `MATCH_GIT_URL` | Git URL for certificates repo (private) |
+| `MATCH_PASSWORD` | Encryption password for match |
+| `FASTLANE_USER` | Apple ID email |
+| `FASTLANE_PASSWORD` | App-specific password for Apple ID |
+| `MATCH_KEYCHAIN_PASSWORD` | macOS login password (for non-interactive builds) |
+
+### Structure
+
+```
+ios/
+  Chai/                  - App source code
+  project.yml            - XcodeGen project spec
+  fastlane/
+    Appfile              - App identifier, team ID
+    Matchfile            - Certificate/profile config
+    Fastfile             - Build and distribution lanes
+  Caddyfile              - HTTPS server for ad-hoc distribution
+  Makefile               - Build automation
+```

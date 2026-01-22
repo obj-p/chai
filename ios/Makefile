@@ -16,8 +16,8 @@ distribute:
 	@bundle exec fastlane distribute
 
 certs:
-	@mkdir -p ~/.local/share/tailscale-certs
-	@tailscale cert --cert-file ~/.local/share/tailscale-certs/${CHAI_TAILSCALE_DOMAIN}.crt --key-file ~/.local/share/tailscale-certs/${CHAI_TAILSCALE_DOMAIN}.key ${CHAI_TAILSCALE_DOMAIN}
+	@mkdir -p ~/.local/share/caddy-certs
+	@mkcert -cert-file ~/.local/share/caddy-certs/${CHAI_DISTRIBUTION_DOMAIN}.crt -key-file ~/.local/share/caddy-certs/${CHAI_DISTRIBUTION_DOMAIN}.key ${CHAI_DISTRIBUTION_DOMAIN}
 
 serve:
 	@caddy run --config Caddyfile

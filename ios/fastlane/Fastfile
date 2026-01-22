@@ -32,11 +32,11 @@ platform :ios do
   private_lane :generate_distribution_files do
     require 'fileutils'
 
-    domain = ENV['CHAI_TAILSCALE_DOMAIN']
-    UI.user_error!("CHAI_TAILSCALE_DOMAIN is required") if domain.nil? || domain.empty?
+    domain = ENV['CHAI_DISTRIBUTION_DOMAIN']
+    UI.user_error!("CHAI_DISTRIBUTION_DOMAIN is required") if domain.nil? || domain.empty?
 
     version = get_version_number(xcodeproj: "Chai.xcodeproj", target: "Chai")
-    base_url = "https://#{domain}"
+    base_url = "https://#{domain}/ios"
     dist_dir = File.expand_path("../dist", Dir.pwd)
     FileUtils.mkdir_p(dist_dir)
 
