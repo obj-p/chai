@@ -2,3 +2,5 @@
 .env
 
 server/server
+
+ios/dist/

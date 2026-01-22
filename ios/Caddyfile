@@ -1,0 +1,12 @@
+{$CHAI_TAILSCALE_DOMAIN} {
+    tls {$HOME}/.local/share/tailscale-certs/{$CHAI_TAILSCALE_DOMAIN}.crt {$HOME}/.local/share/tailscale-certs/{$CHAI_TAILSCALE_DOMAIN}.key
+
+    root * dist
+    file_server
+
+    @plist path /manifest.plist
+    header @plist Content-Type text/xml
+
+    @ipa path *.ipa
+    header @ipa Content-Type application/octet-stream
+}

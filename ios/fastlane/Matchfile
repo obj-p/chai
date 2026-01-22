@@ -1,0 +1,5 @@
+git_url(ENV["MATCH_GIT_URL"])
+storage_mode("git")
+type("adhoc")
+app_identifier(["com.objp.chai.Chai"])
+team_id(ENV["CHAI_TEAM_ID"])

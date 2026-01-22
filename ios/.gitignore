@@ -8,3 +8,8 @@ xcuserdata/
 # Swift Package Manager
 .swiftpm
 .build/
+
+dist/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output
