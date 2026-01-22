@@ -1,0 +1,106 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Sync certificates and profiles using match"
+  lane :sync_certs do
+    match(type: "adhoc", readonly: is_ci)
+  end
+
+  desc "Build ad-hoc IPA"
+  lane :build do
+    sync_certs
+
+    Dir.chdir("..") { sh("xcodegen") }
+
+    gym(
+      scheme: "Chai",
+      project: "Chai.xcodeproj",
+      export_method: "ad-hoc",
+      output_directory: "dist",
+      output_name: "Chai",
+      clean: true,
+      configuration: "Release"
+    )
+  end
+
+  desc "Build and prepare distribution files"
+  lane :distribute do
+    build
+    generate_distribution_files
+  end
+
+  private_lane :generate_distribution_files do
+    require 'fileutils'
+
+    domain = ENV['CHAI_DISTRIBUTION_DOMAIN']
+    UI.user_error!("CHAI_DISTRIBUTION_DOMAIN is required") if domain.nil? || domain.empty?
+
+    version = get_version_number(xcodeproj: "Chai.xcodeproj", target: "Chai")
+    base_url = "https://#{domain}/ios"
+    dist_dir = File.expand_path("../dist", Dir.pwd)
+    FileUtils.mkdir_p(dist_dir)
+
+    # manifest.plist
+    manifest = <<~PLIST
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+        <key>items</key>
+        <array>
+          <dict>
+            <key>assets</key>
+            <array>
+              <dict>
+                <key>kind</key>
+                <string>software-package</string>
+                <key>url</key>
+                <string>#{base_url}/Chai.ipa</string>
+              </dict>
+            </array>
+            <key>metadata</key>
+            <dict>
+              <key>bundle-identifier</key>
+              <string>com.objp.chai.Chai</string>
+              <key>bundle-version</key>
+              <string>#{version}</string>
+              <key>kind</key>
+              <string>software</string>
+              <key>title</key>
+              <string>Chai</string>
+            </dict>
+          </dict>
+        </array>
+      </dict>
+      </plist>
+    PLIST
+    File.write("#{dist_dir}/manifest.plist", manifest)
+
+    # index.html
+    html = <<~HTML
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Install Chai</title>
+        <style>
+          body { font-family: -apple-system, sans-serif; max-width: 400px; margin: 60px auto; padding: 20px; text-align: center; }
+          h1 { font-size: 24px; }
+          .install { display: inline-block; background: #007aff; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; }
+          .note { margin-top: 24px; font-size: 14px; color: #666; }
+        </style>
+      </head>
+      <body>
+        <h1>Chai</h1>
+        <p>Version #{version}</p>
+        <a class="install" href="itms-services://?action=download-manifest&url=#{base_url}/manifest.plist">Install App</a>
+        <p class="note">After installing, go to Settings → General → VPN & Device Management to trust the certificate.</p>
+      </body>
+      </html>
+    HTML
+    File.write("#{dist_dir}/index.html", html)
+
+    UI.success("Distribution files ready at: #{dist_dir}")
+  end
+end

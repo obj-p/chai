@@ -1,0 +1,26 @@
+{$CHAI_DISTRIBUTION_DOMAIN} {
+    tls {$HOME}/.local/share/caddy-certs/{$CHAI_DISTRIBUTION_DOMAIN}.crt {$HOME}/.local/share/caddy-certs/{$CHAI_DISTRIBUTION_DOMAIN}.key
+
+    handle /ios/* {
+        uri strip_prefix /ios
+        root * dist
+        file_server
+
+        @plist path /manifest.plist
+        header @plist Content-Type text/xml
+
+        @ipa path *.ipa
+        header @ipa Content-Type application/octet-stream
+    }
+
+    handle /ios {
+        redir /ios/ permanent
+    }
+
+    handle /ca.pem {
+        root * dist
+        header Content-Type application/x-pem-file
+        header Content-Disposition "attachment; filename=mkcert-ca.pem"
+        file_server
+    }
+}
