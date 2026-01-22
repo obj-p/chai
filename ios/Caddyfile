@@ -1,6 +1,15 @@
 {$CHAI_DISTRIBUTION_DOMAIN} {
     tls {$HOME}/.local/share/caddy-certs/{$CHAI_DISTRIBUTION_DOMAIN}.crt {$HOME}/.local/share/caddy-certs/{$CHAI_DISTRIBUTION_DOMAIN}.key
 
+    # API reverse proxy
+    handle /api/* {
+        reverse_proxy localhost:{$CHAI_PORT:8080}
+    }
+
+    handle /health {
+        reverse_proxy localhost:{$CHAI_PORT:8080}
+    }
+
     handle /ios/* {
         uri strip_prefix /ios
         root * dist

@@ -3,20 +3,33 @@ options:
   bundleIdPrefix: com.objp.chai
   deploymentTarget:
     iOS: 18
-settings:
-  base:
-    GENERATE_INFOPLIST_FILE: true
 
 targets:
   Chai:
     type: application
     platform: iOS
     sources: [Chai]
+    info:
+      path: Chai/Info.plist
+      properties:
+        ChaiServerURL: $(CHAI_SERVER_URL)
+        CFBundleDevelopmentRegion: "$(DEVELOPMENT_LANGUAGE)"
+        CFBundleExecutable: "$(EXECUTABLE_NAME)"
+        CFBundleIdentifier: "$(PRODUCT_BUNDLE_IDENTIFIER)"
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: "$(PRODUCT_NAME)"
+        CFBundlePackageType: "$(PRODUCT_BUNDLE_PACKAGE_TYPE)"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UILaunchScreen: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.objp.chai.Chai
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
+        CHAI_SERVER_URL: ${CHAI_SERVER_URL}
       configs:
         Debug:
           CODE_SIGN_STYLE: Automatic
