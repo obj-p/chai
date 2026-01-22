@@ -28,6 +28,8 @@ actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let title {
             request.httpBody = try encoder.encode(["title": title])
+        } else {
+            request.httpBody = Data("{}".utf8)
         }
         let (data, response) = try await session.data(for: request)
         try checkResponse(response, data: data)

@@ -176,12 +176,15 @@ iOS-specific environment variables (in `.env`):
 | Variable | Description |
 |----------|-------------|
 | `CHAI_DISTRIBUTION_DOMAIN` | Domain for ad-hoc distribution (e.g., `machine.tailnet.ts.net`) |
+| `CHAI_SERVER_URL` | Server URL for iOS app API access (e.g., `https://machine.tailnet.ts.net`) |
 | `CHAI_TEAM_ID` | Apple Developer Team ID |
 | `MATCH_GIT_URL` | Git URL for certificates repo (private) |
 | `MATCH_PASSWORD` | Encryption password for match |
 | `FASTLANE_USER` | Apple ID email |
 | `FASTLANE_PASSWORD` | App-specific password for Apple ID |
 | `MATCH_KEYCHAIN_PASSWORD` | macOS login password (for non-interactive builds) |
+
+**Note:** `CHAI_SERVER_URL` is injected into the app at build time via Info.plist. If not set, the app defaults to `http://localhost:8080`.
 
 ### Structure
 
@@ -193,6 +196,20 @@ ios/
     Appfile              - App identifier, team ID
     Matchfile            - Certificate/profile config
     Fastfile             - Build and distribution lanes
-  Caddyfile              - HTTPS server for ad-hoc distribution
+  Caddyfile              - HTTPS server for ad-hoc distribution and API proxy
   Makefile               - Build automation
 ```
+
+### Running for Development
+
+To run the full stack (server + Caddy for HTTPS API access):
+
+```bash
+# Terminal 1: Start Go server
+cd server && make run
+
+# Terminal 2: Start Caddy (serves app distribution + proxies API)
+cd ios && make serve
+```
+
+The API is accessible via HTTPS at `https://<CHAI_DISTRIBUTION_DOMAIN>/api/*`. Caddy reverse proxies requests to the Go server running on `localhost:8080`.

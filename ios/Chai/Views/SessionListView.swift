@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SessionListView: View {
-    @AppStorage("serverURL") private var serverURL = "http://localhost:8080"
+    @AppStorage("serverURL") private var serverURL = Config.defaultServerURL
     @State private var sessions: [Session] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
