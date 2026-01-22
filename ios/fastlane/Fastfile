@@ -36,6 +36,7 @@ platform :ios do
     UI.user_error!("CHAI_DISTRIBUTION_DOMAIN is required") if domain.nil? || domain.empty?
 
     version = get_version_number(xcodeproj: "Chai.xcodeproj", target: "Chai")
+    git_commit = `git rev-parse --short HEAD`.strip
     base_url = "https://#{domain}/ios"
     dist_dir = File.expand_path("../dist", Dir.pwd)
     FileUtils.mkdir_p(dist_dir)
@@ -93,7 +94,7 @@ platform :ios do
       </head>
       <body>
         <h1>Chai</h1>
-        <p>Version #{version}</p>
+        <p>Version #{version} (#{git_commit})</p>
         <a class="install" href="itms-services://?action=download-manifest&url=#{base_url}/manifest.plist">Install App</a>
         <p class="note">After installing, go to Settings → General → VPN & Device Management to trust the certificate.</p>
       </body>

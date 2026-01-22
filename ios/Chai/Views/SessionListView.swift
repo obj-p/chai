@@ -28,9 +28,16 @@ struct SessionListView: View {
                             NavigationLink(value: session) {
                                 SessionRowView(session: session)
                             }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteSession(session)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
-                        .onDelete(perform: deleteSession)
                     }
+                    .listStyle(.plain)
                 }
             }
             .navigationTitle("Chai")
@@ -89,12 +96,13 @@ struct SessionListView: View {
         }
     }
 
-    private func deleteSession(at offsets: IndexSet) {
-        guard let index = offsets.first else { return }
-        let session = sessions[index]
+    private func deleteSession(_ session: Session) {
+        guard let index = sessions.firstIndex(where: { $0.id == session.id }) else { return }
 
-        // Remove immediately so SwiftUI animates deletion
-        sessions.remove(at: index)
+        // Remove with animation
+        let _ = withAnimation {
+            sessions.remove(at: index)
+        }
 
         Task {
             guard let baseURL else { return }
@@ -104,7 +112,9 @@ struct SessionListView: View {
                 // Restore row on API failure
                 await MainActor.run {
                     if !sessions.contains(where: { $0.id == session.id }) {
-                        sessions.insert(session, at: min(index, sessions.count))
+                        withAnimation {
+                            sessions.insert(session, at: min(index, sessions.count))
+                        }
                     }
                     errorMessage = error.localizedDescription
                 }
