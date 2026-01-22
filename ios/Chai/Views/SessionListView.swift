@@ -40,7 +40,7 @@ struct SessionListView: View {
                     .listStyle(.plain)
                 }
             }
-            .navigationTitle("Chai")
+            .navigationTitle("")
             .navigationDestination(for: Session.self) { session in
                 ChatView(session: session)
             }
