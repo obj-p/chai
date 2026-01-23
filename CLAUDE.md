@@ -128,7 +128,7 @@ mkcert -install                  # Install local CA (requires sudo)
 All commands run from `ios/` directory. **Important:** Source env vars before running make commands:
 
 ```bash
-set -a && source ../.env && set +a
+set -a && source .env && set +a
 ```
 
 ```bash
@@ -147,7 +147,7 @@ make certs                       # Generate TLS certs with mkcert
 make serve                       # Start Caddy HTTPS server
 ```
 
-**Note:** For non-interactive builds (CI, scripts), the keychain must be unlocked and `MATCH_KEYCHAIN_PASSWORD` should be set in `.env`.
+**Note:** For non-interactive builds (CI, scripts), the keychain must be unlocked and `MATCH_KEYCHAIN_PASSWORD` should be set in `ios/.env`.
 
 ### Installing on iOS Device
 
@@ -171,7 +171,7 @@ The mkcert CA is named "mkcert [username]@[hostname]" based on the machine that 
 
 ### Configuration
 
-iOS-specific environment variables (in `.env`):
+iOS-specific environment variables (in `ios/.env`):
 
 | Variable | Description |
 |----------|-------------|
