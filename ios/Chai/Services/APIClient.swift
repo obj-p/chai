@@ -44,6 +44,26 @@ actor APIClient {
         try checkResponse(response, data: data)
     }
 
+    func getSession(baseURL: URL, id: String) async throws -> SessionResponse {
+        let url = baseURL.appendingPathComponent("api/sessions/\(id)")
+        let (data, response) = try await session.data(from: url)
+        try checkResponse(response, data: data)
+        return try decoder.decode(SessionResponse.self, from: data)
+    }
+
+    func sendApproval(baseURL: URL, sessionId: String, toolUseId: String, decision: String) async throws {
+        let url = baseURL.appendingPathComponent("api/sessions/\(sessionId)/approve")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode([
+            "tool_use_id": toolUseId,
+            "decision": decision
+        ])
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response, data: data)
+    }
+
     private func checkResponse(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
