@@ -32,7 +32,7 @@ struct SessionListView: View {
                                 Button(role: .destructive) {
                                     deleteSession(session)
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Image(systemName: "trash")
                                 }
                             }
                         }
