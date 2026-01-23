@@ -26,6 +26,7 @@ targets:
         UILaunchScreen: {}
     settings:
       base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         PRODUCT_BUNDLE_IDENTIFIER: com.objp.chai.Chai
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"

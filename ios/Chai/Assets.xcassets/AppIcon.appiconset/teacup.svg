@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" fill="#F5E6D3"/>
+
+  <!-- Steam wisps -->
+  <g fill="none" stroke="#C4A484" stroke-width="20" stroke-linecap="round">
+    <path d="M400 280 Q380 220 400 160">
+      <animate attributeName="d"
+        values="M400 280 Q380 220 400 160;M400 280 Q420 220 400 160;M400 280 Q380 220 400 160"
+        dur="2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M512 250 Q492 190 512 130">
+      <animate attributeName="d"
+        values="M512 250 Q492 190 512 130;M512 250 Q532 190 512 130;M512 250 Q492 190 512 130"
+        dur="2.5s" repeatCount="indefinite"/>
+    </path>
+    <path d="M624 280 Q604 220 624 160">
+      <animate attributeName="d"
+        values="M624 280 Q604 220 624 160;M624 280 Q644 220 624 160;M624 280 Q604 220 624 160"
+        dur="2.2s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- Saucer -->
+  <ellipse cx="512" cy="780" rx="280" ry="50" fill="#8B5E3C"/>
+  <ellipse cx="512" cy="770" rx="250" ry="40" fill="#A67B5B"/>
+
+  <!-- Cup body -->
+  <path d="M280 400
+           L300 700
+           Q310 750 400 760
+           L624 760
+           Q714 750 724 700
+           L744 400
+           Z"
+        fill="#D4956A"/>
+
+  <!-- Cup inner shadow/rim -->
+  <path d="M280 400
+           Q290 420 512 420
+           Q734 420 744 400
+           L744 400
+           Q734 380 512 380
+           Q290 380 280 400"
+        fill="#8B5E3C"/>
+
+  <!-- Tea liquid -->
+  <ellipse cx="512" cy="400" rx="220" ry="30" fill="#6B3E26"/>
+
+  <!-- Cup highlight -->
+  <path d="M320 450 L335 650 Q340 680 360 690"
+        fill="none" stroke="#E8C4A0" stroke-width="25" stroke-linecap="round"/>
+
+  <!-- Handle -->
+  <path d="M744 450
+           Q850 450 870 550
+           Q890 650 800 700
+           Q750 730 744 650"
+        fill="none" stroke="#D4956A" stroke-width="50" stroke-linecap="round"/>
+
+  <!-- Handle highlight -->
+  <path d="M780 480 Q830 500 840 560"
+        fill="none" stroke="#E8C4A0" stroke-width="15" stroke-linecap="round"/>
+</svg>
