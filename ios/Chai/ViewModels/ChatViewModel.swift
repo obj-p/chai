@@ -5,7 +5,6 @@ import Combine
 final class ChatViewModel: ObservableObject {
     // Session data
     let session: Session
-    private let baseURL: URL
 
     // Message state
     @Published var messages: [Message] = []
@@ -28,9 +27,13 @@ final class ChatViewModel: ObservableObject {
     private let client = APIClient()
     private let sseClient = SSEClient()
 
-    init(session: Session, baseURL: URL) {
+    private var baseURL: URL {
+        let urlString = UserDefaults.standard.string(forKey: "serverURL") ?? Config.defaultServerURL
+        return URL(string: urlString) ?? URL(string: Config.defaultServerURL)!
+    }
+
+    init(session: Session) {
         self.session = session
-        self.baseURL = baseURL
     }
 
     // MARK: - Public Methods
