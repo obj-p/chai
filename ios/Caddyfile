@@ -32,4 +32,16 @@
         header Content-Disposition "attachment; filename=mkcert-ca.pem"
         file_server
     }
+
+    # Favicon
+    handle /favicon.ico {
+        redir /favicon.svg permanent
+    }
+
+    handle /favicon.svg {
+        root * static
+        header Content-Type image/svg+xml
+        header Cache-Control "public, max-age=86400"
+        file_server
+    }
 }
