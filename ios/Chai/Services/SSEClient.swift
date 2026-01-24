@@ -102,10 +102,12 @@ actor SSEClient {
         promptId: String,
         sinceSequence: Int64
     ) async throws -> GetEventsResponse {
-        var components = URLComponents(
+        guard var components = URLComponents(
             url: baseURL.appendingPathComponent("api/sessions/\(sessionId)/events"),
             resolvingAgainstBaseURL: false
-        )!
+        ) else {
+            throw SSEError.invalidURL
+        }
         components.queryItems = [
             URLQueryItem(name: "prompt_id", value: promptId),
             URLQueryItem(name: "since_sequence", value: String(sinceSequence)),
