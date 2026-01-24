@@ -1,8 +1,6 @@
 import Foundation
 
 actor SSEClient {
-    private var activeTask: Task<Void, Never>?
-
     enum SSEError: Error, LocalizedError, Equatable {
         case invalidURL
         case sessionBusy
@@ -87,8 +85,6 @@ actor SSEClient {
                 }
             }
 
-            self.activeTask = task
-
             continuation.onTermination = { @Sendable _ in
                 task.cancel()
             }
@@ -128,10 +124,5 @@ actor SSEClient {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try decoder.decode(GetEventsResponse.self, from: data)
-    }
-
-    func cancel() {
-        activeTask?.cancel()
-        activeTask = nil
     }
 }
