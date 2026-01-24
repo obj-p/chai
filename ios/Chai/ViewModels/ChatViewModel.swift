@@ -22,6 +22,7 @@ final class ChatViewModel: ObservableObject {
     // Reconnection state
     private var currentPromptId: String?
     private var lastSequence: Int64 = 0
+    private var streamingTask: Task<Void, Never>?
 
     // Dependencies
     private let client = APIClient()
@@ -86,12 +87,16 @@ final class ChatViewModel: ObservableObject {
             )
 
             for try await frame in stream {
+                try Task.checkCancellation()
                 await handleSSEFrame(frame)
                 // Yield to allow UI to update
                 await Task.yield()
             }
 
             // Stream completed normally
+            finalizeStreaming()
+        } catch is CancellationError {
+            // View disappeared - clean up silently
             finalizeStreaming()
         } catch let error as SSEClient.SSEError where error == .sessionBusy {
             errorMessage = "This session is busy. Please wait for the current response to complete."
@@ -103,6 +108,12 @@ final class ChatViewModel: ObservableObject {
 
         isStreaming = false
         streamingMessageId = nil
+        streamingTask = nil
+    }
+
+    func cancelStreaming() {
+        streamingTask?.cancel()
+        streamingTask = nil
     }
 
     func approvePermission(allow: Bool) async {

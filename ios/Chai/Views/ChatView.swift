@@ -20,5 +20,8 @@ struct ChatView: View {
                     Task { await viewModel.handleAppBecameActive() }
                 }
             }
+            .onDisappear {
+                viewModel.cancelStreaming()
+            }
     }
 }
