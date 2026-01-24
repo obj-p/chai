@@ -15,5 +15,5 @@ struct ToolCall: Codable, Hashable, Identifiable {
 struct PermissionRequest: Identifiable {
     let id: String
     let toolName: String
-    let input: [String: Any]
+    let input: [String: AnyCodable]
 }

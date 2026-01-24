@@ -10,7 +10,7 @@ final class DebugLogger: Sendable {
     private init() {}
 
     func log(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = Date.now.formatted(.iso8601)
         let entry = "[\(timestamp)] \(message)"
         logs.withLock { logs in
             logs.append(entry)

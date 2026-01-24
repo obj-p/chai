@@ -19,7 +19,7 @@ import (
 type ClaudeRunner interface {
 	RunPrompt(ctx context.Context, sessionID string, claudeSessionID *string, prompt string, workingDir *string, onEvent func(line []byte) error) (string, error)
 	SendPermissionResponse(sessionID, requestID, decision string) error
-	StorePendingRequest(requestID string, toolInput map[string]any)
+	StorePendingRequest(sessionID, requestID string, toolInput map[string]any)
 	KillProcess(sessionID string) error
 }
 
@@ -325,7 +325,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := json.Unmarshal(line, &ctrlReq); err == nil {
 					log.Printf("Storing pending control_request: request_id=%s", ctrlReq.RequestID)
-					h.claude.StorePendingRequest(ctrlReq.RequestID, ctrlReq.Request.Input)
+					h.claude.StorePendingRequest(id, ctrlReq.RequestID, ctrlReq.Request.Input)
 				}
 			}
 

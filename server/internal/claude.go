@@ -22,6 +22,7 @@ type ClaudeProcess struct {
 // PendingRequest stores data from a control_request for later response
 type PendingRequest struct {
 	RequestID string
+	SessionID string
 	ToolInput map[string]any
 }
 
@@ -44,11 +45,12 @@ func NewClaudeManager(workingDir, claudeCmd string) *ClaudeManager {
 }
 
 // StorePendingRequest saves control_request data for later response
-func (cm *ClaudeManager) StorePendingRequest(requestID string, toolInput map[string]any) {
+func (cm *ClaudeManager) StorePendingRequest(sessionID, requestID string, toolInput map[string]any) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	cm.pendingRequests[requestID] = &PendingRequest{
 		RequestID: requestID,
+		SessionID: sessionID,
 		ToolInput: toolInput,
 	}
 }
@@ -283,9 +285,15 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision s
 
 // KillProcess terminates a running Claude process
 func (cm *ClaudeManager) KillProcess(sessionID string) error {
-	cm.mu.RLock()
+	cm.mu.Lock()
 	proc, ok := cm.processes[sessionID]
-	cm.mu.RUnlock()
+	// Clean up any pending requests for this session
+	for reqID, req := range cm.pendingRequests {
+		if req.SessionID == sessionID {
+			delete(cm.pendingRequests, reqID)
+		}
+	}
+	cm.mu.Unlock()
 
 	if !ok {
 		return nil // No process running

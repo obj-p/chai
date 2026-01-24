@@ -40,6 +40,10 @@ final class ChatViewModel {
 
     // MARK: - Public Methods
 
+    func send() {
+        streamingTask = Task { await sendMessage() }
+    }
+
     func loadMessages() async {
         isLoading = true
         defer { isLoading = false }
@@ -52,7 +56,7 @@ final class ChatViewModel {
         }
     }
 
-    func sendMessage() async {
+    private func sendMessage() async {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isStreaming else { return }
 
@@ -260,7 +264,7 @@ final class ChatViewModel {
                 pendingPermission = PermissionRequest(
                     id: requestId,
                     toolName: toolName,
-                    input: input
+                    input: input.mapValues { AnyCodable($0) }
                 )
             }
 
@@ -273,7 +277,7 @@ final class ChatViewModel {
                 pendingPermission = PermissionRequest(
                     id: toolUseId,
                     toolName: toolName,
-                    input: input
+                    input: input.mapValues { AnyCodable($0) }
                 )
                 DebugLogger.shared.log("pendingPermission set: \(pendingPermission != nil)")
             } else {

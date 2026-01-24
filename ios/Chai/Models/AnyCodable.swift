@@ -87,23 +87,38 @@ struct AnyCodable: Codable, Hashable {
     }
 
     func hash(into hasher: inout Hasher) {
+        // Use type discriminators to avoid collisions between types
         switch value {
         case is Void:
-            hasher.combine(0)
+            hasher.combine("nil")
         case let bool as Bool:
+            hasher.combine("bool")
             hasher.combine(bool)
         case let int as Int:
+            hasher.combine("int")
             hasher.combine(int)
         case let double as Double:
+            hasher.combine("double")
             hasher.combine(double)
         case let string as String:
+            hasher.combine("string")
             hasher.combine(string)
         case let array as [Any]:
+            hasher.combine("array")
             hasher.combine(array.count)
+            for element in array {
+                AnyCodable(element).hash(into: &hasher)
+            }
         case let dict as [String: Any]:
+            hasher.combine("dict")
             hasher.combine(dict.count)
+            // Sort keys for deterministic hashing
+            for key in dict.keys.sorted() {
+                hasher.combine(key)
+                AnyCodable(dict[key]!).hash(into: &hasher)
+            }
         default:
-            hasher.combine(0)
+            hasher.combine("unknown")
         }
     }
 }

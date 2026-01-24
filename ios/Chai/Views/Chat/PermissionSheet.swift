@@ -68,13 +68,16 @@ struct PermissionSheet: View {
     }
 
     private func formatInput() -> String {
-        if let command = permission.input["command"] as? String {
+        if let command = permission.input["command"]?.value as? String {
             return command
         }
-        if let filePath = permission.input["file_path"] as? String {
+        if let filePath = permission.input["file_path"]?.value as? String {
             return filePath
         }
-        if let data = try? JSONSerialization.data(withJSONObject: permission.input, options: .prettyPrinted),
+        // Fallback to JSON
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        if let data = try? encoder.encode(permission.input),
            let string = String(data: data, encoding: .utf8) {
             return string
         }
