@@ -18,7 +18,8 @@ import (
 // ClaudeRunner interface for dependency injection
 type ClaudeRunner interface {
 	RunPrompt(ctx context.Context, sessionID string, claudeSessionID *string, prompt string, workingDir *string, onEvent func(line []byte) error) (string, error)
-	SendPermissionResponse(sessionID, toolUseID, decision string) error
+	SendPermissionResponse(sessionID, requestID, decision string) error
+	StorePendingRequest(sessionID, requestID string, toolInput map[string]any)
 	KillProcess(sessionID string) error
 }
 
@@ -284,6 +285,9 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Warning: failed to persist claude event for session %s: %v", id, err)
 			}
 
+			// Debug: log event type being forwarded
+			log.Printf("Forwarding claude event type=%s, len=%d", event.Type, len(line))
+
 			// Send raw JSON to client (no re-marshaling needed)
 			_, writeErr := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", "claude", line)
 			if writeErr != nil {
@@ -291,7 +295,7 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 
-			// Accumulate content for assistant message
+			// Accumulate content for assistant message and track control_requests
 			switch event.Type {
 			case "assistant":
 				var msg AssistantMessage
@@ -310,6 +314,18 @@ func (h *Handlers) Prompt(w http.ResponseWriter, r *http.Request) {
 					if delta.Delta.Type == "text_delta" {
 						assistantContent.WriteString(delta.Delta.Text)
 					}
+				}
+			case "control_request":
+				// Parse control_request and store for later response
+				var ctrlReq struct {
+					RequestID string `json:"request_id"`
+					Request   struct {
+						Input map[string]any `json:"input"`
+					} `json:"request"`
+				}
+				if err := json.Unmarshal(line, &ctrlReq); err == nil {
+					log.Printf("Storing pending control_request: request_id=%s", ctrlReq.RequestID)
+					h.claude.StorePendingRequest(id, ctrlReq.RequestID, ctrlReq.Request.Input)
 				}
 			}
 

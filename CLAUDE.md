@@ -213,3 +213,62 @@ cd ios && make serve
 ```
 
 The API is accessible via HTTPS at `https://<CHAI_DISTRIBUTION_DOMAIN>/api/*`. Caddy reverse proxies requests to the Go server running on `localhost:8080`.
+
+### iOS Simulator UI Automation
+
+The xcode-mcp server provides WebDriverAgent (WDA) tools for automated UI testing and navigation.
+
+#### Prerequisites
+
+1. **Clone WebDriverAgent** (one-time):
+   ```bash
+   cd ~/Projects
+   git clone https://github.com/appium/WebDriverAgent.git
+   ```
+
+2. **Start WDA on a simulator**:
+   ```bash
+   cd ~/Projects/WebDriverAgent
+   xcodebuild test -project WebDriverAgent.xcodeproj \
+     -scheme WebDriverAgentRunner \
+     -destination 'platform=iOS Simulator,name=iPhone 16e'
+   ```
+   Keep this running in a terminal while using WDA tools.
+
+#### Available WDA Tools
+
+| Tool | Description |
+|------|-------------|
+| `wda_status` | Check WDA connectivity |
+| `wda_tap` | Tap by coordinates, accessibility ID, or element ID |
+| `wda_type` | Type text into focused field |
+| `wda_swipe` | Swipe gesture |
+| `wda_find` | Find elements by accessibility ID, class name, predicate |
+| `wda_source` | Get UI hierarchy as XML |
+| `wda_home` | Press home button |
+| `wda_alert` | Accept/dismiss system alerts |
+
+#### Example Workflow
+
+```bash
+# 1. Boot simulator and launch app
+xcrun simctl boot "iPhone 16e"
+xcrun simctl launch booted com.objp.chai.Chai
+
+# 2. Check WDA is connected
+wda_status
+
+# 3. Dismiss any alerts
+wda_alert action=accept
+
+# 4. Find buttons on screen
+wda_find strategy="class name" value="XCUIElementTypeButton"
+
+# 5. Tap by accessibility ID
+wda_tap accessibility_id="New"
+
+# 6. Get UI hierarchy to find elements
+wda_source
+```
+
+**Note:** Coordinates are in **points** (logical pixels), not physical pixels. Use `wda_source` to see element positions.

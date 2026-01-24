@@ -3,4 +3,10 @@
 
 server/server
 
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
 ios/dist/
+ios/fastlane/README.md

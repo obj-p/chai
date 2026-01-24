@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"sync"
 )
@@ -19,20 +20,51 @@ type ClaudeProcess struct {
 	mu     sync.Mutex
 }
 
+// PendingRequest stores data from a control_request for later response
+type PendingRequest struct {
+	RequestID string
+	SessionID string
+	ToolInput map[string]any
+}
+
 // ClaudeManager handles Claude CLI interactions
 type ClaudeManager struct {
-	workingDir string
-	claudeCmd  string
-	processes  map[string]*ClaudeProcess // sessionID -> process
-	mu         sync.RWMutex
+	workingDir      string
+	claudeCmd       string
+	processes       map[string]*ClaudeProcess  // sessionID -> process
+	pendingRequests map[string]*PendingRequest // requestID -> pending request data
+	mu              sync.RWMutex
 }
 
 func NewClaudeManager(workingDir, claudeCmd string) *ClaudeManager {
 	return &ClaudeManager{
-		workingDir: workingDir,
-		claudeCmd:  claudeCmd,
-		processes:  make(map[string]*ClaudeProcess),
+		workingDir:      workingDir,
+		claudeCmd:       claudeCmd,
+		processes:       make(map[string]*ClaudeProcess),
+		pendingRequests: make(map[string]*PendingRequest),
 	}
+}
+
+// StorePendingRequest saves control_request data for later response
+func (cm *ClaudeManager) StorePendingRequest(sessionID, requestID string, toolInput map[string]any) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.pendingRequests[requestID] = &PendingRequest{
+		RequestID: requestID,
+		SessionID: sessionID,
+		ToolInput: toolInput,
+	}
+}
+
+// GetPendingRequest retrieves and removes a pending request
+func (cm *ClaudeManager) GetPendingRequest(requestID string) *PendingRequest {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	req, ok := cm.pendingRequests[requestID]
+	if ok {
+		delete(cm.pendingRequests, requestID)
+	}
+	return req
 }
 
 // UserMessage is the JSON format for sending prompts via stdin
@@ -185,7 +217,8 @@ func (cm *ClaudeManager) RunPrompt(
 }
 
 // SendPermissionResponse sends an approval/denial to the running Claude process
-func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision string) error {
+// The requestID is the request_id from control_request events
+func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision string) error {
 	cm.mu.RLock()
 	proc, ok := cm.processes[sessionID]
 	cm.mu.RUnlock()
@@ -194,13 +227,45 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision s
 		return fmt.Errorf("no active process for session %s", sessionID)
 	}
 
+	// Get the pending request to include the original input
+	pendingReq := cm.GetPendingRequest(requestID)
+
 	proc.mu.Lock()
 	defer proc.mu.Unlock()
 
-	response := PermissionResponse{
-		Type:      "permission_response",
-		ToolUseID: toolUseID,
-		Decision:  decision,
+	// Format: {"type":"control_response","response":{"subtype":"success","request_id":"...","response":{"behavior":"allow","updatedInput":{...}}}}
+	var response NestedControlResponse
+	if decision == "allow" {
+		var updatedInput map[string]any
+		if pendingReq != nil && pendingReq.ToolInput != nil {
+			updatedInput = pendingReq.ToolInput
+		} else {
+			updatedInput = make(map[string]any)
+		}
+		response = NestedControlResponse{
+			Type: "control_response",
+			Response: NestedControlResponseBody{
+				Subtype:   "success",
+				RequestID: requestID,
+				Response: &PermissionDecision{
+					Behavior:     "allow",
+					UpdatedInput: updatedInput,
+				},
+			},
+		}
+	} else {
+		// Denial uses the same structure as allow, with behavior: "deny" and a message
+		response = NestedControlResponse{
+			Type: "control_response",
+			Response: NestedControlResponseBody{
+				Subtype:   "success",
+				RequestID: requestID,
+				Response: &PermissionDecision{
+					Behavior: "deny",
+					Message:  "User denied permission",
+				},
+			},
+		}
 	}
 
 	data, err := json.Marshal(response)
@@ -209,6 +274,8 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision s
 	}
 
 	data = append(data, '\n')
+
+	log.Printf("[claude stdin] %s", string(data))
 
 	if _, err := proc.stdin.Write(data); err != nil {
 		return fmt.Errorf("write: %w", err)
@@ -219,9 +286,15 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision s
 
 // KillProcess terminates a running Claude process
 func (cm *ClaudeManager) KillProcess(sessionID string) error {
-	cm.mu.RLock()
+	cm.mu.Lock()
 	proc, ok := cm.processes[sessionID]
-	cm.mu.RUnlock()
+	// Clean up any pending requests for this session
+	for reqID, req := range cm.pendingRequests {
+		if req.SessionID == sessionID {
+			delete(cm.pendingRequests, reqID)
+		}
+	}
+	cm.mu.Unlock()
 
 	if !ok {
 		return nil // No process running

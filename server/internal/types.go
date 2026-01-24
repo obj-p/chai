@@ -133,11 +133,25 @@ type PermissionRequest struct {
 	Input     map[string]any `json:"input"`
 }
 
-// Permission response to send to Claude CLI stdin
-type PermissionResponse struct {
-	Type      string `json:"type"` // "permission_response"
-	ToolUseID string `json:"tool_use_id"`
-	Decision  string `json:"decision"` // "allow" or "deny"
+// NestedControlResponse is the format for responding to control_request events via stdin
+// Format: {"type":"control_response","response":{"subtype":"success","request_id":"...","response":{"behavior":"allow","updatedInput":{...}}}}
+type NestedControlResponse struct {
+	Type     string                    `json:"type"` // "control_response"
+	Response NestedControlResponseBody `json:"response"`
+}
+
+// NestedControlResponseBody contains the response details
+type NestedControlResponseBody struct {
+	Subtype   string              `json:"subtype"`    // "success"
+	RequestID string              `json:"request_id"` // matches control_request.request_id
+	Response  *PermissionDecision `json:"response"`   // the permission decision
+}
+
+// PermissionDecision represents the allow/deny decision for a tool permission request
+type PermissionDecision struct {
+	Behavior     string         `json:"behavior"`               // "allow" or "deny"
+	UpdatedInput map[string]any `json:"updatedInput,omitempty"` // required for allow
+	Message      string         `json:"message,omitempty"`      // optional message for deny
 }
 
 // SSE Event types sent to client
