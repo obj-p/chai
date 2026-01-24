@@ -45,6 +45,10 @@ platform :ios do
     icon_src = File.expand_path("../Chai/Assets.xcassets/AppIcon.appiconset/AppIcon.png", Dir.pwd)
     FileUtils.cp(icon_src, "#{dist_dir}/icon.png") if File.exist?(icon_src)
 
+    # Copy kettle icon for web bookmark
+    touch_icon_src = File.expand_path("../static/apple-touch-icon.png", Dir.pwd)
+    FileUtils.cp(touch_icon_src, "#{dist_dir}/apple-touch-icon.png") if File.exist?(touch_icon_src)
+
     # manifest.plist
     manifest = <<~PLIST
       <?xml version="1.0" encoding="UTF-8"?>
@@ -88,8 +92,8 @@ platform :ios do
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="icon" type="image/png" href="icon.png">
-        <link rel="apple-touch-icon" href="icon.png">
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="apple-touch-icon" href="apple-touch-icon.png">
         <title>Install Chai</title>
         <style>
           body { font-family: -apple-system, sans-serif; max-width: 400px; margin: 60px auto; padding: 20px; text-align: center; }
