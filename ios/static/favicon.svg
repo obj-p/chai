@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Kettle body -->
+  <ellipse cx="16" cy="20" rx="11" ry="9" fill="#8B4513"/>
+  <ellipse cx="16" cy="20" rx="11" ry="9" fill="url(#kettleGradient)"/>
+
+  <!-- Gradient for metallic look -->
+  <defs>
+    <linearGradient id="kettleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#CD853F"/>
+      <stop offset="50%" style="stop-color:#8B4513"/>
+      <stop offset="100%" style="stop-color:#654321"/>
+    </linearGradient>
+    <linearGradient id="steamGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" style="stop-color:#888;stop-opacity:0.8"/>
+      <stop offset="100%" style="stop-color:#888;stop-opacity:0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Kettle lid -->
+  <ellipse cx="16" cy="11" rx="8" ry="2" fill="#654321"/>
+  <rect x="8" y="11" width="16" height="2" fill="#654321"/>
+
+  <!-- Lid knob -->
+  <circle cx="16" cy="9" r="2" fill="#444"/>
+
+  <!-- Handle -->
+  <path d="M 26 15 Q 30 20 26 25" stroke="#444" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Spout -->
+  <path d="M 5 17 Q 2 15 3 12 L 5 13" fill="#8B4513" stroke="#654321" stroke-width="0.5"/>
+
+  <!-- Steam wisps -->
+  <path d="M 12 6 Q 11 4 12 2" stroke="url(#steamGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M 16 5 Q 15 3 16 1" stroke="url(#steamGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M 20 6 Q 19 4 20 2" stroke="url(#steamGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+
+  <!-- Highlight -->
+  <ellipse cx="13" cy="18" rx="3" ry="2" fill="rgba(255,255,255,0.2)"/>
+</svg>
