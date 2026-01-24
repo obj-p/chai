@@ -41,6 +41,10 @@ platform :ios do
     dist_dir = File.expand_path("../dist", Dir.pwd)
     FileUtils.mkdir_p(dist_dir)
 
+    # Copy app icon to dist
+    icon_src = File.expand_path("../Chai/Assets.xcassets/AppIcon.appiconset/AppIcon.png", Dir.pwd)
+    FileUtils.cp(icon_src, "#{dist_dir}/icon.png") if File.exist?(icon_src)
+
     # manifest.plist
     manifest = <<~PLIST
       <?xml version="1.0" encoding="UTF-8"?>
@@ -84,17 +88,22 @@ platform :ios do
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" type="image/png" href="icon.png">
+        <link rel="apple-touch-icon" href="icon.png">
         <title>Install Chai</title>
         <style>
           body { font-family: -apple-system, sans-serif; max-width: 400px; margin: 60px auto; padding: 20px; text-align: center; }
-          h1 { font-size: 24px; }
+          .icon { width: 120px; height: 120px; border-radius: 27px; margin-bottom: 16px; }
+          h1 { font-size: 24px; margin: 0 0 8px 0; }
+          .version { color: #666; margin: 0 0 24px 0; }
           .install { display: inline-block; background: #007aff; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; }
           .note { margin-top: 24px; font-size: 14px; color: #666; }
         </style>
       </head>
       <body>
+        <img src="icon.png" alt="Chai" class="icon">
         <h1>Chai</h1>
-        <p>Version #{version} (#{git_commit})</p>
+        <p class="version">Version #{version} (#{git_commit})</p>
         <a class="install" href="itms-services://?action=download-manifest&url=#{base_url}/manifest.plist">Install App</a>
         <p class="note">After installing, go to Settings → General → VPN & Device Management to trust the certificate.</p>
       </body>
