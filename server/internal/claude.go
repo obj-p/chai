@@ -216,25 +216,6 @@ func (cm *ClaudeManager) RunPrompt(
 	return resultSessionID, nil
 }
 
-// NestedControlResponse has request_id inside response object
-type NestedControlResponse struct {
-	Type     string                    `json:"type"` // "control_response"
-	Response NestedControlResponseBody `json:"response"`
-}
-
-type NestedControlResponseBody struct {
-	Subtype      string                  `json:"subtype"`              // "success" or "error"
-	RequestID    string                  `json:"request_id"`           // matches control_request.request_id
-	Response     *PermissionDecision     `json:"response,omitempty"`   // for success
-	Error        string                  `json:"error,omitempty"`      // for error
-}
-
-type PermissionDecision struct {
-	Behavior     string         `json:"behavior"`               // "allow" or "deny"
-	UpdatedInput map[string]any `json:"updatedInput,omitempty"` // for allow
-	Message      string         `json:"message,omitempty"`      // for deny
-}
-
 // SendPermissionResponse sends an approval/denial to the running Claude process
 // The requestID is the request_id from control_request events
 func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision string) error {
@@ -273,12 +254,16 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision s
 			},
 		}
 	} else {
+		// Denial uses the same structure as allow, with behavior: "deny" and a message
 		response = NestedControlResponse{
 			Type: "control_response",
 			Response: NestedControlResponseBody{
-				Subtype:   "error",
+				Subtype:   "success",
 				RequestID: requestID,
-				Error:     "User denied permission",
+				Response: &PermissionDecision{
+					Behavior: "deny",
+					Message:  "User denied permission",
+				},
 			},
 		}
 	}
