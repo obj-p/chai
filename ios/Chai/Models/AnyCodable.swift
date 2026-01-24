@@ -62,10 +62,48 @@ struct AnyCodable: Codable, Hashable {
     }
 
     static func == (lhs: AnyCodable, rhs: AnyCodable) -> Bool {
-        String(describing: lhs.value) == String(describing: rhs.value)
+        switch (lhs.value, rhs.value) {
+        case is (Void, Void):
+            return true
+        case let (l as Bool, r as Bool):
+            return l == r
+        case let (l as Int, r as Int):
+            return l == r
+        case let (l as Double, r as Double):
+            return l == r
+        case let (l as String, r as String):
+            return l == r
+        case let (l as [Any], r as [Any]):
+            return l.count == r.count &&
+                zip(l, r).allSatisfy { AnyCodable($0) == AnyCodable($1) }
+        case let (l as [String: Any], r as [String: Any]):
+            return l.count == r.count &&
+                l.allSatisfy { key, val in
+                    r[key].map { AnyCodable(val) == AnyCodable($0) } ?? false
+                }
+        default:
+            return false
+        }
     }
 
     func hash(into hasher: inout Hasher) {
-        hasher.combine(String(describing: value))
+        switch value {
+        case is Void:
+            hasher.combine(0)
+        case let bool as Bool:
+            hasher.combine(bool)
+        case let int as Int:
+            hasher.combine(int)
+        case let double as Double:
+            hasher.combine(double)
+        case let string as String:
+            hasher.combine(string)
+        case let array as [Any]:
+            hasher.combine(array.count)
+        case let dict as [String: Any]:
+            hasher.combine(dict.count)
+        default:
+            hasher.combine(0)
+        }
     }
 }
