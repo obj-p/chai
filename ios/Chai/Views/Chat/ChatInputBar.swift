@@ -5,8 +5,6 @@ struct ChatInputBar: View {
     let isStreaming: Bool
     let onSend: () -> Void
 
-    @FocusState private var isFocused: Bool
-
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isStreaming
     }
@@ -20,7 +18,6 @@ struct ChatInputBar: View {
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 20))
                 .lineLimit(1...5)
-                .focused($isFocused)
 
             Button(action: onSend) {
                 Image(systemName: "arrow.up.circle.fill")
