@@ -34,6 +34,12 @@ struct SettingsView: View {
                             .foregroundStyle(.orange)
                     }
                 }
+
+                Section("Debug") {
+                    NavigationLink("View Logs") {
+                        DebugLogView()
+                    }
+                }
             }
             .navigationTitle("Settings")
             .toolbar {

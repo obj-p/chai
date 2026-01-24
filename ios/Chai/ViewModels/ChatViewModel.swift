@@ -1,23 +1,24 @@
 import Foundation
-import Combine
+import Observation
 
+@Observable
 @MainActor
-final class ChatViewModel: ObservableObject {
+final class ChatViewModel {
     // Session data
     let session: Session
 
     // Message state
-    @Published var messages: [Message] = []
-    @Published var streamingMessageId: String?
+    var messages: [Message] = []
+    var streamingMessageId: String?
 
     // Streaming state
-    @Published var isStreaming = false
-    @Published var pendingPermission: PermissionRequest?
+    var isStreaming = false
+    var pendingPermission: PermissionRequest?
 
     // UI state
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published var inputText = ""
+    var isLoading = false
+    var errorMessage: String?
+    var inputText = ""
 
     // Reconnection state
     private var currentPromptId: String?
@@ -80,13 +81,18 @@ final class ChatViewModel: ObservableObject {
         messages.append(assistantMessage)
 
         do {
+            DebugLogger.shared.log("Starting SSE stream to \(baseURL)")
             let stream = await sseClient.streamPrompt(
                 baseURL: baseURL,
                 sessionId: session.id,
                 prompt: text
             )
+            DebugLogger.shared.log("SSE stream created, starting iteration")
 
+            var frameCount = 0
             for try await frame in stream {
+                frameCount += 1
+                DebugLogger.shared.log("Received frame #\(frameCount)")
                 try Task.checkCancellation()
                 await handleSSEFrame(frame)
                 // Yield to allow UI to update
@@ -94,6 +100,7 @@ final class ChatViewModel: ObservableObject {
             }
 
             // Stream completed normally
+            DebugLogger.shared.log("SSE stream completed, received \(frameCount) frames")
             finalizeStreaming()
         } catch is CancellationError {
             // View disappeared - clean up silently
@@ -166,6 +173,8 @@ final class ChatViewModel: ObservableObject {
     // MARK: - Private Methods
 
     private func handleSSEFrame(_ frame: SSEFrame) async {
+        DebugLogger.shared.log("handleSSEFrame: event=\(frame.event), dataLen=\(frame.data.count)")
+
         switch frame.event {
         case "connected":
             if let data = frame.data.data(using: .utf8),
@@ -176,9 +185,12 @@ final class ChatViewModel: ObservableObject {
             }
 
         case "claude":
+            DebugLogger.shared.log("claude event data: \(frame.data.prefix(200))")
             if let data = frame.data.data(using: .utf8) {
                 handleClaudeEvent(data)
                 lastSequence += 1
+            } else {
+                DebugLogger.shared.log("Failed to convert claude data to UTF8")
             }
 
         case "error":
@@ -200,19 +212,23 @@ final class ChatViewModel: ObservableObject {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String else { return }
 
+        DebugLogger.shared.log("handleClaudeEvent: type=\(type)")
+
         switch type {
         case "content_block_delta":
             // Streaming text deltas
             if let delta = json["delta"] as? [String: Any],
                let text = delta["text"] as? String,
                let idx = messages.firstIndex(where: { $0.id == streamingMessageId }) {
-                var updated = messages[idx]
-                updated.content += text
-                messages[idx] = updated
+                var updated = messages  // Copy entire array
+                updated[idx].content += text
+                messages = updated  // Assign new array
+                DebugLogger.shared.log("content_block_delta: text='\(text.prefix(30))', total=\(messages[idx].content.count)")
             }
 
         case "assistant":
             // Full assistant message with content array
+            DebugLogger.shared.log("handleClaudeEvent: type=assistant")
             if let message = json["message"] as? [String: Any],
                let contentArray = message["content"] as? [[String: Any]],
                let idx = messages.firstIndex(where: { $0.id == streamingMessageId }) {
@@ -224,10 +240,13 @@ final class ChatViewModel: ObservableObject {
                         text += blockText
                     }
                 }
+                DebugLogger.shared.log("assistant: extracted text='\(text.prefix(50))...'")
                 if !text.isEmpty {
-                    var updated = messages[idx]
-                    updated.content = text
-                    messages[idx] = updated
+                    DebugLogger.shared.log("Before: messages[\(idx)].content.count=\(messages[idx].content.count)")
+                    var updated = messages  // Copy entire array
+                    updated[idx].content = text
+                    messages = updated  // Assign new array
+                    DebugLogger.shared.log("After: messages[\(idx)].content.count=\(messages[idx].content.count)")
                 }
             }
 
@@ -265,10 +284,12 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func finalizeStreaming() {
+        DebugLogger.shared.log("finalizeStreaming called")
         if let idx = messages.firstIndex(where: { $0.id == streamingMessageId }) {
-            var updated = messages[idx]
-            updated.isStreaming = false
-            messages[idx] = updated
+            var updated = messages
+            updated[idx].isStreaming = false
+            messages = updated
+            DebugLogger.shared.log("finalizeStreaming: set isStreaming=false for message \(idx)")
         }
         isStreaming = false
         streamingMessageId = nil

@@ -37,11 +37,14 @@ actor SSEClient {
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     request.httpBody = try JSONEncoder().encode(["prompt": prompt])
 
+                    DebugLogger.shared.log("SSEClient: making request to \(url)")
                     let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
                     guard let httpResponse = response as? HTTPURLResponse else {
                         throw SSEError.invalidResponse(statusCode: 0)
                     }
+
+                    DebugLogger.shared.log("SSEClient: response status=\(httpResponse.statusCode)")
 
                     if httpResponse.statusCode == 409 {
                         throw SSEError.sessionBusy
@@ -52,23 +55,30 @@ actor SSEClient {
                     }
 
                     // Parse SSE stream line by line
+                    // Note: bytes.lines skips empty lines, so we yield frames when we see
+                    // a new event: line (indicating previous event is complete)
                     var currentEvent = ""
                     var currentData = ""
+                    var lineCount = 0
 
                     for try await line in bytes.lines {
-                        if line.isEmpty {
-                            // Empty line marks end of event
+                        lineCount += 1
+                        if lineCount <= 5 || lineCount % 10 == 0 {
+                            DebugLogger.shared.log("SSEClient: line #\(lineCount): '\(line.prefix(80))'")
+                        }
+
+                        if line.hasPrefix("event:") {
+                            // New event starting - yield previous if exists
                             if !currentEvent.isEmpty || !currentData.isEmpty {
                                 let frame = SSEFrame(
                                     event: currentEvent.isEmpty ? "message" : currentEvent,
                                     data: currentData
                                 )
                                 continuation.yield(frame)
-                                currentEvent = ""
-                                currentData = ""
+                                DebugLogger.shared.log("SSE: event=\(frame.event), data=\(frame.data.prefix(100))")
                             }
-                        } else if line.hasPrefix("event:") {
                             currentEvent = String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                            currentData = ""
                         } else if line.hasPrefix("data:") {
                             let data = String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces)
                             if !currentData.isEmpty {
@@ -79,6 +89,17 @@ actor SSEClient {
                         // Ignore comments (lines starting with :) and other fields
                     }
 
+                    // Yield final event if any
+                    if !currentEvent.isEmpty || !currentData.isEmpty {
+                        let frame = SSEFrame(
+                            event: currentEvent.isEmpty ? "message" : currentEvent,
+                            data: currentData
+                        )
+                        continuation.yield(frame)
+                        DebugLogger.shared.log("SSE: final event=\(frame.event), data=\(frame.data.prefix(100))")
+                    }
+
+                    DebugLogger.shared.log("SSEClient: stream ended after \(lineCount) lines")
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
