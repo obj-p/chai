@@ -27,7 +27,7 @@
   <path d="M 26 15 Q 30 20 26 25" stroke="#444" stroke-width="2.5" fill="none" stroke-linecap="round"/>
 
   <!-- Spout -->
-  <path d="M 5 17 Q 2 15 3 12 L 5 13" fill="#8B4513" stroke="#654321" stroke-width="0.5"/>
+  <path d="M 6 16 Q 4 16 3 14 L 2 11 L 4 12 Q 5 14 6 14 Z" fill="url(#kettleGradient)" stroke="#654321" stroke-width="0.5"/>
 
   <!-- Steam wisps -->
   <path d="M 12 6 Q 11 4 12 2" stroke="url(#steamGradient)" stroke-width="1.5" fill="none" stroke-linecap="round"/>
