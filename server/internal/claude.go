@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"sync"
 )
@@ -215,6 +216,25 @@ func (cm *ClaudeManager) RunPrompt(
 	return resultSessionID, nil
 }
 
+// NestedControlResponse has request_id inside response object
+type NestedControlResponse struct {
+	Type     string                    `json:"type"` // "control_response"
+	Response NestedControlResponseBody `json:"response"`
+}
+
+type NestedControlResponseBody struct {
+	Subtype      string                  `json:"subtype"`              // "success" or "error"
+	RequestID    string                  `json:"request_id"`           // matches control_request.request_id
+	Response     *PermissionDecision     `json:"response,omitempty"`   // for success
+	Error        string                  `json:"error,omitempty"`      // for error
+}
+
+type PermissionDecision struct {
+	Behavior     string         `json:"behavior"`               // "allow" or "deny"
+	UpdatedInput map[string]any `json:"updatedInput,omitempty"` // for allow
+	Message      string         `json:"message,omitempty"`      // for deny
+}
+
 // SendPermissionResponse sends an approval/denial to the running Claude process
 // The requestID is the request_id from control_request events
 func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision string) error {
@@ -232,34 +252,30 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision s
 	proc.mu.Lock()
 	defer proc.mu.Unlock()
 
-	// Use SDK control_response format
-	// Format: {"type":"control_response","response":{"subtype":"success","request_id":"...","response":{...}}}
-	var response ControlResponse
+	// Format: {"type":"control_response","response":{"subtype":"success","request_id":"...","response":{"behavior":"allow","updatedInput":{...}}}}
+	var response NestedControlResponse
 	if decision == "allow" {
-		// For allow, we must include updatedInput with the original tool input
 		var updatedInput map[string]any
 		if pendingReq != nil && pendingReq.ToolInput != nil {
 			updatedInput = pendingReq.ToolInput
 		} else {
-			// Fallback: empty object (may not work with all tools)
 			updatedInput = make(map[string]any)
 		}
-		response = ControlResponse{
+		response = NestedControlResponse{
 			Type: "control_response",
-			Response: ControlResponsePayload{
+			Response: NestedControlResponseBody{
 				Subtype:   "success",
 				RequestID: requestID,
-				Response: &PermissionResultResponse{
+				Response: &PermissionDecision{
 					Behavior:     "allow",
 					UpdatedInput: updatedInput,
 				},
 			},
 		}
 	} else {
-		// For deny, use error subtype
-		response = ControlResponse{
+		response = NestedControlResponse{
 			Type: "control_response",
-			Response: ControlResponsePayload{
+			Response: NestedControlResponseBody{
 				Subtype:   "error",
 				RequestID: requestID,
 				Error:     "User denied permission",
@@ -274,7 +290,7 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision s
 
 	data = append(data, '\n')
 
-	fmt.Printf("[claude stdin] %s", string(data)) // Debug logging
+	log.Printf("[claude stdin] %s", string(data))
 
 	if _, err := proc.stdin.Write(data); err != nil {
 		return fmt.Errorf("write: %w", err)

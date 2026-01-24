@@ -133,37 +133,9 @@ type PermissionRequest struct {
 	Input     map[string]any `json:"input"`
 }
 
-// Permission response to send to Claude CLI stdin (legacy format)
-type PermissionResponse struct {
-	Type      string `json:"type"` // "permission_response"
-	ToolUseID string `json:"tool_use_id"`
-	Decision  string `json:"decision"` // "allow" or "deny"
-}
-
-// Control response to send to Claude CLI stdin (new format for control_request)
-// Based on SDK protocol: SDKControlResponse -> ControlResponse | ControlErrorResponse
-type ControlResponse struct {
-	Type     string                 `json:"type"` // "control_response"
-	Response ControlResponsePayload `json:"response"`
-}
-
-// ControlResponsePayload wraps either success or error response
-type ControlResponsePayload struct {
-	Subtype   string                      `json:"subtype"`    // "success" or "error"
-	RequestID string                      `json:"request_id"` // matches control_request.request_id
-	Response  *PermissionResultResponse   `json:"response,omitempty"` // for success
-	Error     string                      `json:"error,omitempty"`    // for error
-}
-
-// PermissionResultResponse contains the permission decision
-// Matches SDK's PermissionResultAllow / PermissionResultDeny
-type PermissionResultResponse struct {
-	Behavior           string         `json:"behavior"`                     // "allow" or "deny"
-	UpdatedInput       map[string]any `json:"updatedInput,omitempty"`       // optional modified input (camelCase!)
-	UpdatedPermissions []any          `json:"updatedPermissions,omitempty"` // optional permission updates
-	Message            string         `json:"message,omitempty"`            // for deny: reason
-	Interrupt          bool           `json:"interrupt,omitempty"`          // for deny: interrupt session
-}
+// NOTE: Permission response types are defined in claude.go (NestedControlResponse, etc.)
+// The correct format for control_response is:
+// {"type":"control_response","response":{"subtype":"success","request_id":"...","response":{"behavior":"allow","updatedInput":{...}}}}
 
 // SSE Event types sent to client
 type SSEEvent struct {
