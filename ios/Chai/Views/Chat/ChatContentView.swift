@@ -25,7 +25,7 @@ struct ChatContentView: View {
         }
         .sheet(item: Binding(
             get: { viewModel.pendingPermission },
-            set: { _ in }
+            set: { viewModel.pendingPermission = $0 }
         )) { permission in
             PermissionSheet(
                 permission: permission,
