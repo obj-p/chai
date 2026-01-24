@@ -19,20 +19,49 @@ type ClaudeProcess struct {
 	mu     sync.Mutex
 }
 
+// PendingRequest stores data from a control_request for later response
+type PendingRequest struct {
+	RequestID string
+	ToolInput map[string]any
+}
+
 // ClaudeManager handles Claude CLI interactions
 type ClaudeManager struct {
-	workingDir string
-	claudeCmd  string
-	processes  map[string]*ClaudeProcess // sessionID -> process
-	mu         sync.RWMutex
+	workingDir      string
+	claudeCmd       string
+	processes       map[string]*ClaudeProcess  // sessionID -> process
+	pendingRequests map[string]*PendingRequest // requestID -> pending request data
+	mu              sync.RWMutex
 }
 
 func NewClaudeManager(workingDir, claudeCmd string) *ClaudeManager {
 	return &ClaudeManager{
-		workingDir: workingDir,
-		claudeCmd:  claudeCmd,
-		processes:  make(map[string]*ClaudeProcess),
+		workingDir:      workingDir,
+		claudeCmd:       claudeCmd,
+		processes:       make(map[string]*ClaudeProcess),
+		pendingRequests: make(map[string]*PendingRequest),
 	}
+}
+
+// StorePendingRequest saves control_request data for later response
+func (cm *ClaudeManager) StorePendingRequest(requestID string, toolInput map[string]any) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	cm.pendingRequests[requestID] = &PendingRequest{
+		RequestID: requestID,
+		ToolInput: toolInput,
+	}
+}
+
+// GetPendingRequest retrieves and removes a pending request
+func (cm *ClaudeManager) GetPendingRequest(requestID string) *PendingRequest {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	req, ok := cm.pendingRequests[requestID]
+	if ok {
+		delete(cm.pendingRequests, requestID)
+	}
+	return req
 }
 
 // UserMessage is the JSON format for sending prompts via stdin
@@ -185,7 +214,8 @@ func (cm *ClaudeManager) RunPrompt(
 }
 
 // SendPermissionResponse sends an approval/denial to the running Claude process
-func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision string) error {
+// The requestID is the request_id from control_request events
+func (cm *ClaudeManager) SendPermissionResponse(sessionID, requestID, decision string) error {
 	cm.mu.RLock()
 	proc, ok := cm.processes[sessionID]
 	cm.mu.RUnlock()
@@ -194,13 +224,45 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision s
 		return fmt.Errorf("no active process for session %s", sessionID)
 	}
 
+	// Get the pending request to include the original input
+	pendingReq := cm.GetPendingRequest(requestID)
+
 	proc.mu.Lock()
 	defer proc.mu.Unlock()
 
-	response := PermissionResponse{
-		Type:      "permission_response",
-		ToolUseID: toolUseID,
-		Decision:  decision,
+	// Use SDK control_response format
+	// Format: {"type":"control_response","response":{"subtype":"success","request_id":"...","response":{...}}}
+	var response ControlResponse
+	if decision == "allow" {
+		// For allow, we must include updatedInput with the original tool input
+		var updatedInput map[string]any
+		if pendingReq != nil && pendingReq.ToolInput != nil {
+			updatedInput = pendingReq.ToolInput
+		} else {
+			// Fallback: empty object (may not work with all tools)
+			updatedInput = make(map[string]any)
+		}
+		response = ControlResponse{
+			Type: "control_response",
+			Response: ControlResponsePayload{
+				Subtype:   "success",
+				RequestID: requestID,
+				Response: &PermissionResultResponse{
+					Behavior:     "allow",
+					UpdatedInput: updatedInput,
+				},
+			},
+		}
+	} else {
+		// For deny, use error subtype
+		response = ControlResponse{
+			Type: "control_response",
+			Response: ControlResponsePayload{
+				Subtype:   "error",
+				RequestID: requestID,
+				Error:     "User denied permission",
+			},
+		}
 	}
 
 	data, err := json.Marshal(response)
@@ -209,6 +271,8 @@ func (cm *ClaudeManager) SendPermissionResponse(sessionID, toolUseID, decision s
 	}
 
 	data = append(data, '\n')
+
+	fmt.Printf("[claude stdin] %s", string(data)) // Debug logging
 
 	if _, err := proc.stdin.Write(data); err != nil {
 		return fmt.Errorf("write: %w", err)

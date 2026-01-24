@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct ChatView: View {
-    @StateObject private var viewModel: ChatViewModel
+    @State private var viewModel: ChatViewModel
     @Environment(\.scenePhase) private var scenePhase
 
     init(session: Session) {
-        _viewModel = StateObject(wrappedValue: ChatViewModel(session: session))
+        _viewModel = State(wrappedValue: ChatViewModel(session: session))
     }
 
     var body: some View {

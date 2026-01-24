@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChatContentView: View {
-    @ObservedObject var viewModel: ChatViewModel
+    @Bindable var viewModel: ChatViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,9 +30,12 @@ struct ChatContentView: View {
             PermissionSheet(
                 permission: permission,
                 onDecision: { allow in
-                    Task { await viewModel.approvePermission(allow: allow) }
+                    Task { await viewModel.approvePermission(allow: allow, permission: permission) }
                 }
             )
+        }
+        .onChange(of: viewModel.pendingPermission?.id) { oldValue, newValue in
+            DebugLogger.shared.log("pendingPermission changed: \(oldValue ?? "nil") -> \(newValue ?? "nil")")
         }
     }
 }

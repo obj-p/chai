@@ -4,7 +4,6 @@ struct MessageListView: View {
     var viewModel: ChatViewModel
 
     var body: some View {
-        let _ = DebugLogger.shared.log("MessageListView body, count=\(viewModel.messages.count), lastContent=\(viewModel.messages.last?.content.count ?? 0)")
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 12) {

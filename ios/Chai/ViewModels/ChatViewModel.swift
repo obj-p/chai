@@ -81,18 +81,13 @@ final class ChatViewModel {
         messages.append(assistantMessage)
 
         do {
-            DebugLogger.shared.log("Starting SSE stream to \(baseURL)")
             let stream = await sseClient.streamPrompt(
                 baseURL: baseURL,
                 sessionId: session.id,
                 prompt: text
             )
-            DebugLogger.shared.log("SSE stream created, starting iteration")
 
-            var frameCount = 0
             for try await frame in stream {
-                frameCount += 1
-                DebugLogger.shared.log("Received frame #\(frameCount)")
                 try Task.checkCancellation()
                 await handleSSEFrame(frame)
                 // Yield to allow UI to update
@@ -100,7 +95,6 @@ final class ChatViewModel {
             }
 
             // Stream completed normally
-            DebugLogger.shared.log("SSE stream completed, received \(frameCount) frames")
             finalizeStreaming()
         } catch is CancellationError {
             // View disappeared - clean up silently
@@ -123,19 +117,25 @@ final class ChatViewModel {
         streamingTask = nil
     }
 
-    func approvePermission(allow: Bool) async {
-        guard let permission = pendingPermission else { return }
+    func approvePermission(allow: Bool, permission: PermissionRequest) async {
+        DebugLogger.shared.log("approvePermission called: allow=\(allow), permission.id=\(permission.id)")
 
-        pendingPermission = nil
+        // Clear pending permission if it matches
+        if pendingPermission?.id == permission.id {
+            pendingPermission = nil
+        }
 
         do {
+            DebugLogger.shared.log("Sending approval: toolUseId=\(permission.id), decision=\(allow ? "allow" : "deny")")
             try await client.sendApproval(
                 baseURL: baseURL,
                 sessionId: session.id,
                 toolUseId: permission.id,
                 decision: allow ? "allow" : "deny"
             )
+            DebugLogger.shared.log("Approval sent successfully")
         } catch {
+            DebugLogger.shared.log("Approval failed: \(error.localizedDescription)")
             errorMessage = error.localizedDescription
         }
     }
@@ -173,7 +173,7 @@ final class ChatViewModel {
     // MARK: - Private Methods
 
     private func handleSSEFrame(_ frame: SSEFrame) async {
-        DebugLogger.shared.log("handleSSEFrame: event=\(frame.event), dataLen=\(frame.data.count)")
+        DebugLogger.shared.log("RAW SSE frame: event='\(frame.event)' data='\(frame.data.prefix(300))'")
 
         switch frame.event {
         case "connected":
@@ -185,12 +185,9 @@ final class ChatViewModel {
             }
 
         case "claude":
-            DebugLogger.shared.log("claude event data: \(frame.data.prefix(200))")
             if let data = frame.data.data(using: .utf8) {
                 handleClaudeEvent(data)
                 lastSequence += 1
-            } else {
-                DebugLogger.shared.log("Failed to convert claude data to UTF8")
             }
 
         case "error":
@@ -210,9 +207,12 @@ final class ChatViewModel {
 
     private func handleClaudeEvent(_ data: Data) {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String else { return }
+              let type = json["type"] as? String else {
+            DebugLogger.shared.log("handleClaudeEvent: failed to parse JSON or no type field")
+            return
+        }
 
-        DebugLogger.shared.log("handleClaudeEvent: type=\(type)")
+        DebugLogger.shared.log("claude event type: \(type)")
 
         switch type {
         case "content_block_delta":
@@ -223,42 +223,61 @@ final class ChatViewModel {
                 var updated = messages  // Copy entire array
                 updated[idx].content += text
                 messages = updated  // Assign new array
-                DebugLogger.shared.log("content_block_delta: text='\(text.prefix(30))', total=\(messages[idx].content.count)")
             }
 
         case "assistant":
             // Full assistant message with content array
-            DebugLogger.shared.log("handleClaudeEvent: type=assistant")
             if let message = json["message"] as? [String: Any],
                let contentArray = message["content"] as? [[String: Any]],
                let idx = messages.firstIndex(where: { $0.id == streamingMessageId }) {
                 // Extract text from content blocks
                 var text = ""
                 for block in contentArray {
-                    if let blockType = block["type"] as? String, blockType == "text",
-                       let blockText = block["text"] as? String {
-                        text += blockText
+                    if let blockType = block["type"] as? String {
+                        if blockType == "text", let blockText = block["text"] as? String {
+                            text += blockText
+                        }
+                        // Note: tool_use blocks are shown here but permission is requested via control_request
                     }
                 }
-                DebugLogger.shared.log("assistant: extracted text='\(text.prefix(50))...'")
                 if !text.isEmpty {
-                    DebugLogger.shared.log("Before: messages[\(idx)].content.count=\(messages[idx].content.count)")
                     var updated = messages  // Copy entire array
                     updated[idx].content = text
                     messages = updated  // Assign new array
-                    DebugLogger.shared.log("After: messages[\(idx)].content.count=\(messages[idx].content.count)")
                 }
             }
 
-        case "permission_request":
+        case "control_request":
+            // Claude CLI's permission request format
+            DebugLogger.shared.log("control_request received: \(String(data: data, encoding: .utf8)?.prefix(500) ?? "nil")")
+            if let requestId = json["request_id"] as? String,
+               let request = json["request"] as? [String: Any],
+               let subtype = request["subtype"] as? String,
+               subtype == "can_use_tool",
+               let toolName = request["tool_name"] as? String,
+               let input = request["input"] as? [String: Any] {
+                DebugLogger.shared.log("Creating PermissionRequest from control_request: id=\(requestId), tool=\(toolName)")
+                pendingPermission = PermissionRequest(
+                    id: requestId,
+                    toolName: toolName,
+                    input: input
+                )
+            }
+
+        case "permission_request", "tool_use":
+            DebugLogger.shared.log("\(type) received: \(String(data: data, encoding: .utf8) ?? "nil")")
             if let toolUseId = json["tool_use_id"] as? String,
                let toolName = json["tool_name"] as? String,
                let input = json["input"] as? [String: Any] {
+                DebugLogger.shared.log("Creating PermissionRequest: id=\(toolUseId), tool=\(toolName)")
                 pendingPermission = PermissionRequest(
                     id: toolUseId,
                     toolName: toolName,
                     input: input
                 )
+                DebugLogger.shared.log("pendingPermission set: \(pendingPermission != nil)")
+            } else {
+                DebugLogger.shared.log("\(type) parsing failed - keys: \(Array(json.keys))")
             }
 
         case "result":
@@ -266,7 +285,8 @@ final class ChatViewModel {
             break
 
         default:
-            break
+            // Log unhandled event types to see what we're missing
+            DebugLogger.shared.log("unhandled event type '\(type)': \(String(data: data, encoding: .utf8)?.prefix(200) ?? "nil")")
         }
     }
 
@@ -284,12 +304,10 @@ final class ChatViewModel {
     }
 
     private func finalizeStreaming() {
-        DebugLogger.shared.log("finalizeStreaming called")
         if let idx = messages.firstIndex(where: { $0.id == streamingMessageId }) {
             var updated = messages
             updated[idx].isStreaming = false
             messages = updated
-            DebugLogger.shared.log("finalizeStreaming: set isStreaming=false for message \(idx)")
         }
         isStreaming = false
         streamingMessageId = nil
