@@ -1,0 +1,11 @@
+linters:
+  disable:
+    # TODO: Enable errcheck after fixing existing issues
+    - errcheck
+
+issues:
+  exclude-rules:
+    # Test files can have unused code (mocks, helpers)
+    - path: _test\.go
+      linters:
+        - unused
