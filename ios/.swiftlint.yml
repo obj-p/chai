@@ -1,0 +1,14 @@
+included:
+  - Chai
+  - ChaiTests
+
+disabled_rules:
+  - trailing_comma
+  - identifier_name
+  - line_length
+  - type_body_length
+  - function_body_length
+  - cyclomatic_complexity
+
+opt_in_rules:
+  - empty_count
