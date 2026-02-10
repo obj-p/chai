@@ -23,98 +23,31 @@ platform :ios do
     )
   end
 
-  desc "Build and prepare distribution files"
+  desc "Build and publish to appserve"
   lane :distribute do
     build
-    generate_distribution_files
+    publish_to_appserve
   end
 
-  private_lane :generate_distribution_files do
+  private_lane :publish_to_appserve do
     require 'fileutils'
 
-    domain = ENV['CHAI_DISTRIBUTION_DOMAIN']
-    UI.user_error!("CHAI_DISTRIBUTION_DOMAIN is required") if domain.nil? || domain.empty?
-
+    appserve_dir = ENV['APPSERVE_DIR'] || File.expand_path("~/Projects/appserve")
     version = get_version_number(xcodeproj: "Chai.xcodeproj", target: "Chai")
-    git_commit = `git rev-parse --short HEAD`.strip
-    base_url = "https://#{domain}/ios"
-    dist_dir = File.expand_path("../dist", Dir.pwd)
-    FileUtils.mkdir_p(dist_dir)
+    commit = `git rev-parse --short HEAD`.strip
+    dist = File.expand_path("../dist", Dir.pwd)
 
-    # Copy app icon to dist
-    icon_src = File.expand_path("../Chai/Assets.xcassets/AppIcon.appiconset/AppIcon.png", Dir.pwd)
-    FileUtils.cp(icon_src, "#{dist_dir}/icon.png") if File.exist?(icon_src)
+    icon = File.expand_path("../Chai/Assets.xcassets/AppIcon.appiconset/AppIcon.png", Dir.pwd)
+    FileUtils.cp(icon, "#{dist}/icon.png") if File.exist?(icon)
 
-    # Copy kettle icon for web bookmark
-    touch_icon_src = File.expand_path("../static/apple-touch-icon.png", Dir.pwd)
-    FileUtils.cp(touch_icon_src, "#{dist_dir}/apple-touch-icon.png") if File.exist?(touch_icon_src)
+    touch_icon = File.expand_path("../static/apple-touch-icon.png", Dir.pwd)
+    FileUtils.cp(touch_icon, "#{dist}/apple-touch-icon.png") if File.exist?(touch_icon)
 
-    # manifest.plist
-    manifest = <<~PLIST
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-      <dict>
-        <key>items</key>
-        <array>
-          <dict>
-            <key>assets</key>
-            <array>
-              <dict>
-                <key>kind</key>
-                <string>software-package</string>
-                <key>url</key>
-                <string>#{base_url}/Chai.ipa</string>
-              </dict>
-            </array>
-            <key>metadata</key>
-            <dict>
-              <key>bundle-identifier</key>
-              <string>com.objp.chai.Chai</string>
-              <key>bundle-version</key>
-              <string>#{version}</string>
-              <key>kind</key>
-              <string>software</string>
-              <key>title</key>
-              <string>Chai</string>
-            </dict>
-          </dict>
-        </array>
-      </dict>
-      </plist>
-    PLIST
-    File.write("#{dist_dir}/manifest.plist", manifest)
-
-    # index.html
-    html = <<~HTML
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-        <link rel="apple-touch-icon" href="apple-touch-icon.png">
-        <title>Install Chai</title>
-        <style>
-          body { font-family: -apple-system, sans-serif; max-width: 400px; margin: 60px auto; padding: 20px; text-align: center; }
-          .icon { width: 120px; height: 120px; border-radius: 27px; margin-bottom: 16px; }
-          h1 { font-size: 24px; margin: 0 0 8px 0; }
-          .version { color: #666; margin: 0 0 24px 0; }
-          .install { display: inline-block; background: #007aff; color: white; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; }
-          .note { margin-top: 24px; font-size: 14px; color: #666; }
-        </style>
-      </head>
-      <body>
-        <img src="icon.png" alt="Chai" class="icon">
-        <h1>Chai</h1>
-        <p class="version">Version #{version} (#{git_commit})</p>
-        <a class="install" href="itms-services://?action=download-manifest&url=#{base_url}/manifest.plist">Install App</a>
-        <p class="note">After installing, go to Settings → General → VPN & Device Management to trust the certificate.</p>
-      </body>
-      </html>
-    HTML
-    File.write("#{dist_dir}/index.html", html)
-
-    UI.success("Distribution files ready at: #{dist_dir}")
+    sh("#{appserve_dir}/publish.sh",
+      "--app", "chai", "--version", version, "--ipa", "#{dist}/Chai.ipa",
+      "--bundle-id", "com.objp.chai.Chai", "--title", "Chai",
+      "--icon", "#{dist}/icon.png", "--touch-icon", "#{dist}/apple-touch-icon.png",
+      "--commit", commit,
+      "--note", "After installing, go to Settings → General → VPN & Device Management to trust the certificate.")
   end
 end

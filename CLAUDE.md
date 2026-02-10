@@ -119,8 +119,7 @@ The server spawns Claude CLI processes with streaming JSON I/O:
 
 ```bash
 # One-time system setup
-brew bundle                      # Install xcodegen, caddy, mkcert (from repo root)
-mkcert -install                  # Install local CA (requires sudo)
+brew bundle                      # Install pre-commit, xcodegen (from repo root)
 ```
 
 ### Build Commands
@@ -140,21 +139,17 @@ bundle exec fastlane match adhoc # Set up certificates/profiles
 # Development
 make generate                    # Generate Xcode project
 make build                       # Build ad-hoc IPA
-make distribute                  # Build IPA + generate distribution files
-
-# Distribution server
-make certs                       # Generate TLS certs with mkcert
-make serve                       # Start Caddy HTTPS server
+make distribute                  # Build IPA + publish to appserve
 ```
 
 **Note:** For non-interactive builds (CI, scripts), the keychain must be unlocked and `MATCH_KEYCHAIN_PASSWORD` should be set in `ios/.env`.
 
 ### Installing on iOS Device
 
-With Caddy running (`make serve`), on your iOS device:
+The distribution server is managed by the shared [appserve](../appserve/) project (`make serve` in appserve). On your iOS device:
 
 1. **Install mkcert CA** (one-time per device):
-   - Visit `https://<CHAI_DISTRIBUTION_DOMAIN>/ca.pem` in Safari
+   - Visit `https://<APPSERVE_DOMAIN>/ca.pem` in Safari
    - Tap "Allow" to download the profile
    - Go to Settings → General → VPN & Device Management
    - Tap the downloaded profile and install it
@@ -162,7 +157,7 @@ With Caddy running (`make serve`), on your iOS device:
    - Enable full trust for the mkcert certificate
 
 2. **Install the app**:
-   - Visit `https://<CHAI_DISTRIBUTION_DOMAIN>/ios/`
+   - Visit `https://<APPSERVE_DOMAIN>/apps/chai/latest/`
    - Tap "Install App"
    - After installation, trust the developer certificate if prompted:
      Settings → General → VPN & Device Management → tap developer profile → Trust
@@ -175,7 +170,6 @@ iOS-specific environment variables (in `ios/.env`):
 
 | Variable | Description |
 |----------|-------------|
-| `CHAI_DISTRIBUTION_DOMAIN` | Domain for ad-hoc distribution (e.g., `machine.tailnet.ts.net`) |
 | `CHAI_SERVER_URL` | Server URL for iOS app API access (e.g., `https://machine.tailnet.ts.net`) |
 | `CHAI_TEAM_ID` | Apple Developer Team ID |
 | `MATCH_GIT_URL` | Git URL for certificates repo (private) |
@@ -196,23 +190,22 @@ ios/
     Appfile              - App identifier, team ID
     Matchfile            - Certificate/profile config
     Fastfile             - Build and distribution lanes
-  Caddyfile              - HTTPS server for ad-hoc distribution and API proxy
   Makefile               - Build automation
 ```
 
 ### Running for Development
 
-To run the full stack (server + Caddy for HTTPS API access):
+To run the full stack (server + appserve for HTTPS API access):
 
 ```bash
 # Terminal 1: Start Go server
 cd server && make run
 
-# Terminal 2: Start Caddy (serves app distribution + proxies API)
-cd ios && make serve
+# Terminal 2: Start appserve (serves app distribution + proxies API)
+cd ../appserve && make serve
 ```
 
-The API is accessible via HTTPS at `https://<CHAI_DISTRIBUTION_DOMAIN>/api/*`. Caddy reverse proxies requests to the Go server running on `localhost:8080`.
+The API is accessible via HTTPS at `https://<APPSERVE_DOMAIN>/api/*`. Caddy reverse proxies requests to the Go server running on `localhost:8080`.
 
 ### iOS Simulator UI Automation
 
